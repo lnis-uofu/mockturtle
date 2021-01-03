@@ -31,10 +31,10 @@
 #include <lorina/verilog.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/algorithms/cut_rewriting.hpp>
-#include <mockturtle/algorithms/node_resynthesis/xag_npn.hpp>
+#include <mockturtle/algorithms/node_resynthesis/mig_npn.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
-#include <mockturtle/io/verilog_reader.hpp>
-#include <mockturtle/networks/aig.hpp>
+#include <mockturtle/io/write_verilog.hpp>
+#include <mockturtle/networks/mig.hpp>
 
 #include <experiments.hpp>
 
@@ -43,32 +43,36 @@ int main()
   using namespace experiments;
   using namespace mockturtle;
 
-  experiment<std::string, uint32_t, uint32_t, uint32_t, float, float, bool, bool> exp( "cut_rewriting", "benchmark", "size_before", "size_after", "size after 2", "runtime", "runtime 2", "equivalent", "equivalent 2" );
-  xag_npn_resynthesis<aig_network> resyn;
+  experiment<std::string, uint32_t, uint32_t, uint32_t, uint32_t, float> exp( "cut_rewriting", "benchmark", "size_before", "size1", "size2", "size3", "runtime" );
+  mig_npn_resynthesis resyn;
 
   for ( auto const& benchmark : epfl_benchmarks() )
   {
     fmt::print( "[i] processing {}\n", benchmark );
-    aig_network aig, aig2;
-    lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig ) );
-    lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( aig2 ) );
+    mig_network mig;
+    lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( mig ) );
 
     cut_rewriting_params ps;
     ps.cut_enumeration_ps.cut_size = 4;
     ps.progress = true;
 
-    uint32_t size_before = aig.num_gates();
+    uint32_t size_before = mig.num_gates();
     cut_rewriting_stats st;
-    cut_rewriting_with_compatibility_graph( aig, resyn, ps, &st );
-    aig = cleanup_dangling( aig );
 
-    auto cec = abc_cec( aig, benchmark );
+    cut_rewriting_with_compatibility_graph( mig, resyn, ps, &st );
+    mig = cleanup_dangling( mig );
+    uint32_t size1 = mig.num_gates();
 
-    cut_rewriting_stats st2;
-    aig2 = cut_rewriting( aig2, resyn, ps, &st2 );
-    auto cec2 = abc_cec( aig2, benchmark );
+    cut_rewriting_with_compatibility_graph( mig, resyn, ps, &st );
+    mig = cleanup_dangling( mig );
+    uint32_t size2 = mig.num_gates();
 
-    exp( benchmark, size_before, aig.num_gates(), aig2.num_gates(), to_seconds( st.time_total ), to_seconds( st2.time_total ), cec, cec2 );
+    cut_rewriting_with_compatibility_graph( mig, resyn, ps, &st );
+    mig = cleanup_dangling( mig );
+    write_verilog( mig, "opt/" + benchmark + ".v" );
+    uint32_t size3 = mig.num_gates();
+
+    exp( benchmark, size_before, size1, size2, size3, to_seconds( st.time_total ) );
   }
 
   exp.save();

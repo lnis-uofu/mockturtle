@@ -26,6 +26,7 @@
 #include <mockturtle/algorithms/mig_resub.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
+#include <mockturtle/io/verilog_reader.hpp>
 #include <mockturtle/networks/mig.hpp>
 #include <mockturtle/views/depth_view.hpp>
 #include <mockturtle/views/fanout_view.hpp>
@@ -48,12 +49,13 @@ int main()
     fmt::print( "[i] processing {}\n", benchmark );
 
     mig_network mig;
-    lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( mig ) );
+    //lorina::read_aiger( benchmark_path( benchmark ), aiger_reader( mig ) );
+    lorina::read_verilog( "opt_rw_cg/" + benchmark + ".v", verilog_reader( mig ) );
 
     resubstitution_params ps;
     resubstitution_stats st;
     ps.max_pis = 8u;
-    ps.max_inserts = 1u;
+    ps.max_inserts = 20u;
     ps.progress = false;
 
     depth_view depth_mig{mig};
