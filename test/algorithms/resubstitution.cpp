@@ -2,6 +2,9 @@
 
 #include <mockturtle/views/depth_view.hpp>
 #include <mockturtle/views/fanout_view.hpp>
+#include <mockturtle/algorithms/resubstitution/resyn_strategies.hpp>
+#include <mockturtle/algorithms/resubstitution/window_resubstitution.hpp>
+#include <mockturtle/algorithms/resubstitution/simulation_resubstitution.hpp>
 #include <mockturtle/algorithms/resubstitution.hpp>
 #include <mockturtle/algorithms/cleanup.hpp>
 #include <mockturtle/algorithms/simulation.hpp>
@@ -433,4 +436,44 @@ TEST_CASE( "Simulation-guided resubstitution", "[resubstitution]" )
   CHECK( aig.num_pis() == 2 );
   CHECK( aig.num_pos() == 1 );
   CHECK( aig.num_gates() == 1 );
+}
+
+TEST_CASE( "Window resubstitution of MIG", "[resubstitution]" )
+{
+  using namespace mockturtle::experimental;
+
+  mig_network mig;
+
+  const auto a = mig.create_pi();
+  const auto b = mig.create_pi();
+  const auto c = mig.create_pi();
+
+  const auto f = mig.create_maj( a, mig.create_maj( a, b, c ), c );
+  mig.create_po( f );
+
+  depth_view dmig{mig};
+  fanout_view fmig{dmig};
+
+  mig_resyn resyn;
+  window_resubstitution( fmig, resyn );
+}
+
+TEST_CASE( "Simulation resubstitution of MIG", "[resubstitution]" )
+{
+  using namespace mockturtle::experimental;
+
+  mig_network mig;
+
+  const auto a = mig.create_pi();
+  const auto b = mig.create_pi();
+  const auto c = mig.create_pi();
+
+  const auto f = mig.create_maj( a, mig.create_maj( a, b, c ), c );
+  mig.create_po( f );
+
+  depth_view dmig{mig};
+  fanout_view fmig{dmig};
+
+  mig_resyn resyn;
+  simulation_resubstitution( fmig, resyn );
 }
