@@ -33,7 +33,9 @@
 #include "../../traits.hpp"
 #include "../../utils/stopwatch.hpp"
 #include "../../utils/progress_bar.hpp"
+#include "../simulation.hpp"
 #include "windowing.hpp"
+#include <kitty/kitty.hpp>
 
 namespace mockturtle
 {
@@ -67,7 +69,12 @@ struct window_resubstitution_stats
 namespace detail
 {
 
-template<class Ntk, class ResubstitutionFn, class Window = single_output_window<Ntk>>
+template<
+  class Ntk,
+  class ResubstitutionFn,
+  class Window = single_output_window<Ntk>,
+  class FunctionTT = kitty::dynamic_truth_table
+>
 class window_resubstitution_impl
 {
 public:
@@ -82,6 +89,7 @@ public:
     : ntk( ntk )
     , resubstitution_fn( resubstitution_fn )
     , wm( ntk, ps.win_ps, st.win_st )
+    , sim( ps.win_ps.cut_size )
     , ps( ps )
     , st( st )
   {
@@ -134,6 +142,7 @@ private:
   Ntk& ntk;
   ResubstitutionFn const& resubstitution_fn;
   window_manager<Ntk, Window> wm;
+  default_simulator<FunctionTT> sim;
   window_resubstitution_ps const& ps;
   window_resubstitution_stats& st;
 };
