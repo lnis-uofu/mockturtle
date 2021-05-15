@@ -114,10 +114,9 @@ public:
         continue;
       }
 
-      Window win = construct_window( pivot );
-      if ( Window win_opt = resynthesize_window( pivot, win ) )
+      if ( Window win = construct_window( pivot ) )
       {
-        update_network( win, win_opt );
+        resynthesize_window( pivot, win );
       }
     }
   }
@@ -128,7 +127,7 @@ private:
     return wm.construct_window( pivot );
   }
 
-  Window resynthesize_window( node const& pivot, Window const& win )
+  bool resynthesize_window( node const& pivot, Window const& win )
   {
     simulate_window( win );
 
@@ -142,12 +141,23 @@ private:
                                                [&]( node const& n ){ return ntk.value( n ); } );
     if ( !index_list )
     {
-      return nullwin;
+      return false;
     }
 
-    /* TODO: not yet implemented */
+    fmt::print( "index_list = {}\n", to_index_list_string( *index_list ) );
 
-    return nullwin;
+    /* convert divisor nodes into signals */
+    std::vector<signal> xs( win.size() );
+    std::transform( win.begin_divisors(), win.end_divisors(), std::begin( xs ),
+                    [&]( node const& n ){ return ntk.make_signal( n ); } );
+
+    std::vector<signal> outputs;
+    insert( ntk, std::begin( xs ), std::end( xs ), *index_list,
+            [&]( signal const& f ){ outputs.emplace_back( f ); } );
+
+    assert( outputs.size() == 1u );
+    ntk.substitute_node( pivot, outputs[0u] );
+    return true;
   }
 
   void simulate_window( Window const& win )
@@ -179,11 +189,6 @@ private:
 
       fmt::print( "{:3}. {:5} ({})\n", index, n, kitty::to_hex( tts[index] ) );
     });
-  }
-
-  void update_network( Window const& win, Window const& win_opt )
-  {
-    /* TODO: not yet implemented */
   }
 
 private:
