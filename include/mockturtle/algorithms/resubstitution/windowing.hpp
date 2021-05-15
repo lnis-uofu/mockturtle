@@ -105,6 +105,11 @@ public:
     return nodes_->size() - num_leaves_;
   }
 
+  double volume() const noexcept
+  {
+    return double( nodes_->size() - num_leaves_ ) / num_leaves_;
+  }
+
 private:
   Ntk const *ntk_;
   std::vector<node> const *nodes_; /* leaves, divisors, mffc */

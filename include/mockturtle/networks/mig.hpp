@@ -1114,6 +1114,24 @@ public:
     return kitty::ternary_majority( c1.weight ? ~tt1 : tt1, c2.weight ? ~tt2 : tt2, c3.weight ? ~tt3 : tt3 );
   }
 
+  template<typename TruthTable, typename Iterator>
+  TruthTable compute( node const& n, Iterator begin, Iterator end ) const
+  {
+    (void)end;
+
+    assert( n != 0 && !is_ci( n ) );
+
+    auto const& c1 = _storage->nodes[n].children[0];
+    auto const& c2 = _storage->nodes[n].children[1];
+    auto const& c3 = _storage->nodes[n].children[2];
+
+    auto tt1 = *begin++;
+    auto tt2 = *begin++;
+    auto tt3 = *begin++;
+
+    return kitty::ternary_majority( c1.weight ? ~tt1 : tt1, c2.weight ? ~tt2 : tt2, c3.weight ? ~tt3 : tt3 );
+  }
+
   /*! \brief Re-compute the last block. */
   template<typename Iterator>
   void compute( node const& n, kitty::partial_truth_table& result, Iterator begin, Iterator end ) const

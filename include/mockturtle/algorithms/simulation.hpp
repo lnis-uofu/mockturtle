@@ -171,8 +171,6 @@ public:
  */
 class partial_simulator
 {
-  friend class bit_packed_simulator;
-
 public:
   partial_simulator() {}
 
@@ -281,7 +279,7 @@ public:
     return patterns;
   }
 
-private:
+protected:
   std::vector<kitty::partial_truth_table> patterns;
   uint32_t num_patterns;
 };

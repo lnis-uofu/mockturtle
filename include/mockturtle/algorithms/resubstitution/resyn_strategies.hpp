@@ -25,7 +25,7 @@
 
 /*!
   \file resyn_strategies.hpp
-  \brief Generic resubstitution framework
+  \brief Resynthesis strategies
 */
 
 #pragma once
@@ -43,10 +43,11 @@ struct xag_resyn_ps
 {
 };
 
+template<class Ntk>
 class xag_resyn
 {
 public:
-  using network_type = mig_network;
+  using network_type = Ntk;
 
   /* function representation */
   using function_type  = kitty::dynamic_truth_table;
@@ -55,7 +56,7 @@ public:
   using dont_care_type = kitty::dynamic_truth_table;
 
 public:
-  xag_resyn() = default;
+  explicit xag_resyn() = default;
 };
 
 /* parameters for mig_resyn */
@@ -75,7 +76,7 @@ public:
   using dont_care_type = kitty::dynamic_truth_table;
 
 public:
-  mig_resyn() = default;
+  explicit mig_resyn() = default;
 };
 
 /* parameters for mig_resyn */
@@ -95,7 +96,7 @@ public:
   using dont_care_type = kitty::dynamic_truth_table;
 
 public:
-  akers_resyn() = default;
+  explicit akers_resyn() = default;
 };
 
 } /* namespace experimental */
