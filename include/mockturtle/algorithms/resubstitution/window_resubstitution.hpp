@@ -89,7 +89,7 @@ public:
     : ntk( ntk )
     , resubstitution_fn( resubstitution_fn )
     , wm( ntk, ps.win_ps, st.win_st )
-    , sim( ps.win_ps.cut_size )
+    , tts( 100 )
     , ps( ps )
     , st( st )
   {
@@ -115,7 +115,7 @@ public:
       }
 
       Window win = construct_window( pivot );
-      if ( Window win_opt = resynthesize_window( win ) )
+      if ( Window win_opt = resynthesize_window( pivot, win ) )
       {
         update_network( win, win_opt );
       }
@@ -128,9 +128,57 @@ private:
     return wm.construct_window( pivot );
   }
 
-  Window resynthesize_window( Window const& win )
+  Window resynthesize_window( node const& pivot, Window const& win )
   {
+    simulate_window( win );
+
+    /* TODO: How do we get the don't-cares? */
+
+    /* TODO: What interface do we want here? */
+
+    FunctionTT target = tts[ntk.value( pivot )];
+    FunctionTT care = ~target.construct();
+    auto const index_list = resubstitution_fn( target, care, win.begin_divisors(), win.end_divisors(), tts,
+                                               [&]( node const& n ){ return ntk.value( n ); } );
+    if ( !index_list )
+    {
+      return nullwin;
+    }
+
+    /* TODO: not yet implemented */
+
     return nullwin;
+  }
+
+  void simulate_window( Window const& win )
+  {
+    /* grow TTs if necessary */
+    if ( tts.size() < win.size() )
+    {
+      tts.resize( win.size() );
+    }
+
+    win.foreach_leaf( [&]( node const& n, uint32_t index ){
+      FunctionTT tt = kitty::create<FunctionTT>( ps.win_ps.cut_size );
+      kitty::create_nth_var( tt, index );
+      tts[index] = tt;
+      ntk.set_value( n, index );
+
+      fmt::print( "{:3}. {:5} ({})\n", index, n, kitty::to_hex( tt ) );
+    });
+
+    std::array<FunctionTT, Ntk::max_fanin_size> fi_tts;
+    win.foreach_divisor( [&]( node const& n, uint32_t index ){
+      uint32_t fi_index{0};
+      ntk.foreach_fanin( n, [&]( signal const& fi ){
+        fi_tts[fi_index++] = ntk.is_complemented( fi ) ? ~tts[ntk.value( ntk.get_node( fi ) )] : tts[ntk.value( ntk.get_node( fi ) )];
+      });
+
+      tts[index] = ntk.template compute<FunctionTT>( n, std::cbegin( fi_tts ), std::cbegin( fi_tts ) + fi_index );
+      ntk.set_value( n, index );
+
+      fmt::print( "{:3}. {:5} ({})\n", index, n, kitty::to_hex( tts[index] ) );
+    });
   }
 
   void update_network( Window const& win, Window const& win_opt )
@@ -142,7 +190,7 @@ private:
   Ntk& ntk;
   ResubstitutionFn const& resubstitution_fn;
   window_manager<Ntk, Window> wm;
-  default_simulator<FunctionTT> sim;
+  std::vector<FunctionTT> tts;
   window_resubstitution_ps const& ps;
   window_resubstitution_stats& st;
 };

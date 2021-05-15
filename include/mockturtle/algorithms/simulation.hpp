@@ -608,7 +608,8 @@ void simulate_nodes( Ntk const& ntk, unordered_node_map<SimulationType, Ntk>& no
 namespace detail
 {
 /* Forward declaration */
-template<class Ntk, class Simulator> void re_simulate_fanin_cone( Ntk const& ntk, typename Ntk::node const& n, unordered_node_map<kitty::partial_truth_table, Ntk>& node_to_value, Simulator const& sim );
+template<class Ntk, class Simulator>
+void re_simulate_fanin_cone( Ntk const& ntk, typename Ntk::node const& n, unordered_node_map<kitty::partial_truth_table, Ntk>& node_to_value, Simulator const& sim );
 
 template<class Ntk, class Simulator>
 void simulate_fanin_cone( Ntk const& ntk, typename Ntk::node const& n, unordered_node_map<kitty::partial_truth_table, Ntk>& node_to_value, Simulator const& sim )

@@ -31,6 +31,7 @@
 #pragma once
 
 #include "../../networks/mig.hpp"
+#include "../resyn_engines/mig_resyn_engines.hpp"
 
 namespace mockturtle
 {
@@ -75,8 +76,26 @@ public:
   /* don't-care function representation */
   using dont_care_type = kitty::dynamic_truth_table;
 
+  /* index-list */
+  using index_list_t = mig_index_list;
+
 public:
   explicit mig_resyn() = default;
+
+  template<class Iterator, class TruthTables, class Fn>
+  std::optional<index_list_t> operator()( function_type const& target, function_type const& care, Iterator begin, Iterator end, TruthTables const& tts, Fn&& fn ) const
+  {
+    mig_resyn_engine_params ps;
+    mig_resyn_engine_stats st;
+    mig_resyn_engine_bottom_up s( target, care, st, ps );
+
+    while ( begin != end )
+    {
+      s.add_divisor( tts[fn( *begin )] );
+      ++begin;
+    }
+    return s();
+  }
 };
 
 /* parameters for mig_resyn */

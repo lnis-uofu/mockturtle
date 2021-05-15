@@ -51,21 +51,22 @@ class single_output_window
 {
 public:
   using node = typename Ntk::node;
+  using iterator = typename std::vector<node>::iterator;
+  using const_iterator = typename std::vector<node>::const_iterator;
 
 public:
   explicit single_output_window( Ntk const& ntk, std::vector<node> const& nodes,
                                  uint32_t num_leaves, uint32_t mffc_size ) noexcept
     : ntk_( &ntk )
-    , nodes_( &nodes )
+    , nodes_( nodes )
     , num_leaves_( num_leaves )
     , mffc_size_( mffc_size )
   {
-    assert( nodes_->size() >= num_leaves_ + mffc_size_ );
+    assert( nodes_.size() >= num_leaves_ + mffc_size_ );
   }
 
   single_output_window( nullwin_t ) noexcept
     : ntk_( nullptr )
-    , nodes_( nullptr )
     , num_leaves_( 0 )
     , mffc_size_( 0 )
   {
@@ -74,7 +75,6 @@ public:
   single_output_window<Ntk>& operator=( nullwin_t ) noexcept
   {
     ntk_ = nullptr;
-    nodes_ = nullptr;
     num_leaves_ = 0;
     mffc_size_ = 0;
     return *this;
@@ -82,7 +82,17 @@ public:
 
   operator bool() const noexcept
   {
-    return nodes_ != nullptr;
+    return ntk_ != nullptr;
+  }
+
+  const_iterator begin_divisors() const noexcept
+  {
+    return std::cbegin( nodes_ );
+  }
+
+  const_iterator end_divisors() const noexcept
+  {
+    return std::cend( nodes_ );
   }
 
   uint32_t num_leaves() const noexcept
@@ -92,7 +102,7 @@ public:
 
   uint32_t num_divisors() const noexcept
   {
-    return nodes_->size() - num_leaves_ - mffc_size_;
+    return nodes_.size() - num_leaves_ - mffc_size_;
   }
 
   uint32_t mffc_size() const noexcept
@@ -102,17 +112,45 @@ public:
 
   uint32_t size() const noexcept
   {
-    return nodes_->size() - num_leaves_;
+    return nodes_.size();
   }
 
   double volume() const noexcept
   {
-    return double( nodes_->size() - num_leaves_ ) / num_leaves_;
+    return double( nodes_.size() - num_leaves_ ) / num_leaves_;
+  }
+
+  template<class Fn>
+  void foreach_leaf( Fn&& fn ) const noexcept
+  {
+    uint32_t index{0};
+    auto it = std::begin( nodes_ );
+    auto const ie = std::begin( nodes_ ) + num_leaves_;
+    while ( it != ie )
+    {
+      assert( index < size() );
+      fn( *it, index++ );
+      ++it;
+    }
+  }
+
+  template<bool exclude_mffc = false, class Fn>
+  void foreach_divisor( Fn&& fn ) const noexcept
+  {
+    uint32_t index{num_leaves_};
+    auto it = std::begin( nodes_ ) + num_leaves_;
+    auto const ie = exclude_mffc ? std::begin( nodes_ ) + ( size() - num_leaves_ - mffc_size_ ) : std::end( nodes_ );
+    while ( it != ie )
+    {
+      assert( index < size() );
+      fn( *it, index++ );
+      ++it;
+    }
   }
 
 private:
   Ntk const *ntk_;
-  std::vector<node> const *nodes_; /* leaves, divisors, mffc */
+  std::vector<node> nodes_; /* leaves, divisors, mffc */
   uint32_t num_leaves_;
   uint32_t mffc_size_;
 }; /* single_output_window */
