@@ -554,8 +554,8 @@ inline void insert_using_nodes_iterator( Ntk& ntk, BeginIter begin, EndIter end,
   static_assert( has_create_maj_v<Ntk>, "Ntk does not implement the create_maj method" );
   static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
 
-  static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<BeginIter>::value_type>, node<Ntk>>, "BeginIter value_type must be Ntk signal type" );
-  static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<EndIter>::value_type>, node<Ntk>>, "EndIter value_type must be Ntk signal type" );
+  static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<BeginIter>::value_type>, node<Ntk>>, "BeginIter value_type must be Ntk node type" );
+  static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<EndIter>::value_type>, node<Ntk>>, "EndIter value_type must be Ntk node type" );
 
   using signal = typename Ntk::signal;
 
