@@ -87,8 +87,7 @@ public:
   {
     mig_resyn_engine_params ps;
     mig_resyn_engine_stats st;
-    mig_resyn_engine_bottom_up s( target, care, st, ps );
-
+    mig_resyn_engine s( target, care, st, ps );
     while ( begin != end )
     {
       s.add_divisor( tts[fn( *begin )] );
@@ -96,9 +95,47 @@ public:
     }
     return s();
   }
+}; /* mig_resyn */
+
+/* parameters for mig_resyn_bottom_up */
+struct mig_resyn_bottom_up_ps
+{
 };
 
-/* parameters for mig_resyn */
+class mig_resyn_bottom_up
+{
+public:
+  using network_type = mig_network;
+
+  /* function representation */
+  using function_type  = kitty::dynamic_truth_table;
+
+  /* don't-care function representation */
+  using dont_care_type = kitty::dynamic_truth_table;
+
+  /* index-list */
+  using index_list_t = mig_index_list;
+
+public:
+  explicit mig_resyn_bottom_up() = default;
+
+  template<class Iterator, class TruthTables, class Fn>
+  std::optional<index_list_t> operator()( function_type const& target, function_type const& care, Iterator begin, Iterator end, TruthTables const& tts, Fn&& fn ) const
+  {
+    mig_resyn_engine_params ps;
+    mig_resyn_engine_stats st;
+    mig_resyn_engine_bottom_up s( target, care, st, ps );
+    while ( begin != end )
+    {
+      s.add_divisor( tts[fn( *begin )] );
+      ++begin;
+    }
+    return s();
+  }
+}; /* mig_resyn_bottom_up */
+
+#if 0
+/* parameters for akers_resyn */
 struct akers_resyn_ps
 {
 };
@@ -116,7 +153,22 @@ public:
 
 public:
   explicit akers_resyn() = default;
-};
+
+  template<class Iterator, class TruthTables, class Fn>
+  std::optional<index_list_t> operator()( function_type const& target, function_type const& care, Iterator begin, Iterator end, TruthTables const& tts, Fn&& fn ) const
+  {
+    mig_resyn_engine_params ps;
+    mig_resyn_engine_stats st;
+    mig_resyn_engine_akers s( target, care, st, ps );
+    while ( begin != end )
+    {
+      s.add_divisor( tts[fn( *begin )] );
+      ++begin;
+    }
+    return s();
+  }
+}; /* akers_resyn */
+#endif
 
 } /* namespace experimental */
 

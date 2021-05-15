@@ -940,6 +940,7 @@ public:
   using TT = kitty::partial_truth_table;
   using truth_table_t = TT;
 
+public:
   explicit mig_resyn_engine_akers( TT const& target, TT const& care, stats& st, params const& ps = {} )
     : divisors( { ~target, target } ), id_to_lit( { 0, 1 } ), st( st ), ps( ps )
                 /* const0, const1 */
