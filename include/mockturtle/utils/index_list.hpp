@@ -512,20 +512,11 @@ void encode( mig_index_list& indices, Ntk const& ntk )
   assert( indices.size() == 1u + 3u*ntk.num_gates() + ntk.num_pos() );
 }
 
-/*! \brief Inserts a mig_index_list into an existing network
- *
- * **Required network functions:**
- * - `get_constant`
- * - `create_maj`
- *
- * \param ntk A logic network
- * \param begin Begin iterator of signal inputs
- * \param end End iterator of signal inputs
- * \param indices An index list
- * \param fn Callback function
- */
+namespace detail
+{
+
 template<typename Ntk, typename BeginIter, typename EndIter, typename Fn>
-void insert( Ntk& ntk, BeginIter begin, EndIter end, mig_index_list const& indices, Fn&& fn )
+inline void insert_using_signal_iterator( Ntk& ntk, BeginIter begin, EndIter end, mig_index_list const& indices, Fn&& fn )
 {
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
   static_assert( has_create_maj_v<Ntk>, "Ntk does not implement the create_maj method" );
@@ -554,6 +545,91 @@ void insert( Ntk& ntk, BeginIter begin, EndIter end, mig_index_list const& indic
     uint32_t const i = lit >> 1;
     fn( ( lit % 2 ) ? !signals.at( i ) : signals.at( i ) );
   });
+}
+
+template<typename Ntk, typename BeginIter, typename EndIter, typename Fn>
+inline void insert_using_nodes_iterator( Ntk& ntk, BeginIter begin, EndIter end, mig_index_list const& indices, Fn&& fn )
+{
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_create_maj_v<Ntk>, "Ntk does not implement the create_maj method" );
+  static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
+
+  static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<BeginIter>::value_type>, node<Ntk>>, "BeginIter value_type must be Ntk signal type" );
+  static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<EndIter>::value_type>, node<Ntk>>, "EndIter value_type must be Ntk signal type" );
+
+  using signal = typename Ntk::signal;
+
+  std::vector<signal> signals;
+  auto const literal_to_signal = [&]( uint32_t lit ) -> signal
+  {
+    uint32_t const var = lit >> 1;
+    bool const complemented = lit % 2;
+
+    /* constant */
+    if ( var == 0 )
+    {
+      return ntk.get_constant( complemented );
+    }
+
+    /* fanins */
+    if ( ( var - 1 ) < indices.num_pis() )
+    {
+      return ntk.make_signal( *( begin + ( var - 1 ) ) );
+    }
+
+    /* internal nodes */
+    return complemented ? !signals.at( var - indices.num_pis() - 1 ) : signals.at( var - indices.num_pis() - 1 );
+  };
+
+  indices.foreach_gate( [&]( uint32_t lit0, uint32_t lit1, uint32_t lit2 ){
+    signal const s0 = literal_to_signal( lit0 );
+    signal const s1 = literal_to_signal( lit1 );
+    signal const s2 = literal_to_signal( lit2 );
+    signals.emplace_back( ntk.create_maj( s0, s1, s2 ) );
+  });
+
+  indices.foreach_po( [&]( uint32_t lit ){
+    fn( literal_to_signal( lit ) );
+  });
+}
+
+} /* detail */
+
+/*! \brief Inserts a mig_index_list into an existing network
+ *
+ * **Required network functions:**
+ * - `get_constant`
+ * - `create_maj`
+ *
+ * \param ntk A logic network
+ * \param begin Begin iterator of signal inputs
+ * \param end End iterator of signal inputs
+ * \param indices An index list
+ * \param fn Callback function
+ */
+template<typename Ntk, typename BeginIter, typename EndIter, typename Fn>
+void insert( Ntk& ntk, BeginIter begin, EndIter end, mig_index_list const& indices, Fn&& fn )
+{
+  static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<BeginIter>::value_type>, node<Ntk>> ||
+                 std::is_same_v<std::decay_t<typename std::iterator_traits<BeginIter>::value_type>, signal<Ntk>>,
+                 "BeginIter value_type must be Ntk node or Ntk signal type" );
+  static_assert( std::is_same_v<std::decay_t<typename std::iterator_traits<EndIter>::value_type>, node<Ntk>> ||
+                 std::is_same_v<std::decay_t<typename std::iterator_traits<EndIter>::value_type>, signal<Ntk>>,
+                 "EndIter value_type must be Ntk node or Ntk signal type" );
+
+  if constexpr ( std::is_same_v<std::decay_t<typename std::iterator_traits<BeginIter>::value_type>, signal<Ntk>> &&
+                 std::is_same_v<std::decay_t<typename std::iterator_traits<EndIter>::value_type>, signal<Ntk>> )
+  {
+    detail::insert_using_signal_iterator( ntk, begin, end, indices, fn );
+    return;
+  }
+
+  if constexpr ( std::is_same_v<std::decay_t<typename std::iterator_traits<BeginIter>::value_type>, node<Ntk>> &&
+                 std::is_same_v<std::decay_t<typename std::iterator_traits<EndIter>::value_type>, node<Ntk>> )
+  {
+    detail::insert_using_nodes_iterator( ntk, begin, end, indices, fn );
+    return;
+  }
 }
 
 /*! \brief Converts an mig_index_list to a string

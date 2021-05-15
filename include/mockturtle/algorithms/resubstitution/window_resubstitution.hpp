@@ -36,6 +36,7 @@
 #include "../simulation.hpp"
 #include "windowing.hpp"
 #include <kitty/kitty.hpp>
+#include <fmt/color.h>
 
 namespace mockturtle
 {
@@ -146,13 +147,8 @@ private:
 
     fmt::print( "index_list = {}\n", to_index_list_string( *index_list ) );
 
-    /* convert divisor nodes into signals */
-    std::vector<signal> xs( win.size() );
-    std::transform( win.begin_divisors(), win.end_divisors(), std::begin( xs ),
-                    [&]( node const& n ){ return ntk.make_signal( n ); } );
-
     std::vector<signal> outputs;
-    insert( ntk, std::begin( xs ), std::end( xs ), *index_list,
+    insert( ntk, win.begin_divisors(), win.end_divisors(), *index_list,
             [&]( signal const& f ){ outputs.emplace_back( f ); } );
 
     assert( outputs.size() == 1u );
@@ -162,19 +158,23 @@ private:
 
   void simulate_window( Window const& win )
   {
-    /* grow TTs if necessary */
+    /* grow TTs if necessary if necessary*/
     if ( tts.size() < win.size() )
     {
       tts.resize( win.size() );
     }
 
+    /* simulate in topological order */
     win.foreach_leaf( [&]( node const& n, uint32_t index ){
       FunctionTT tt = kitty::create<FunctionTT>( ps.win_ps.cut_size );
       kitty::create_nth_var( tt, index );
       tts[index] = tt;
       ntk.set_value( n, index );
 
-      fmt::print( "{:3}. {:5} ({})\n", index, n, kitty::to_hex( tt ) );
+      fmt::print( "{:3}. {} ({})\n",
+                  index,
+                  fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_magenta ), "{:5}", n ),
+                  fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_red ), "{}", kitty::to_hex( tt ) ) );
     });
 
     std::array<FunctionTT, Ntk::max_fanin_size> fi_tts;
@@ -187,7 +187,10 @@ private:
       tts[index] = ntk.template compute<FunctionTT>( n, std::cbegin( fi_tts ), std::cbegin( fi_tts ) + fi_index );
       ntk.set_value( n, index );
 
-      fmt::print( "{:3}. {:5} ({})\n", index, n, kitty::to_hex( tts[index] ) );
+      fmt::print( "{:3}. {} ({})\n",
+                  index,
+                  fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_magenta ), "{:5}", n ),
+                  fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_blue ), "{}", kitty::to_hex( tts[index] ) ) );
     });
   }
 
