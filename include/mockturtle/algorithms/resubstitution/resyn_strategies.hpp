@@ -134,7 +134,6 @@ public:
   }
 }; /* mig_resyn_bottom_up */
 
-#if 0
 /* parameters for akers_resyn */
 struct akers_resyn_ps
 {
@@ -146,10 +145,13 @@ public:
   using network_type = mig_network;
 
   /* function representation */
-  using function_type  = kitty::dynamic_truth_table;
+  using function_type  = kitty::partial_truth_table;
 
   /* don't-care function representation */
-  using dont_care_type = kitty::dynamic_truth_table;
+  using dont_care_type = kitty::partial_truth_table;
+
+  /* index-list */
+  using index_list_t = mig_index_list;
 
 public:
   explicit akers_resyn() = default;
@@ -168,7 +170,6 @@ public:
     return s();
   }
 }; /* akers_resyn */
-#endif
 
 } /* namespace experimental */
 

@@ -73,9 +73,9 @@ namespace detail
 template<
   class Ntk,
   class ResubstitutionFn,
-  class Window = single_output_window<Ntk>,
-  class FunctionTT = kitty::dynamic_truth_table
->
+  class Window,
+  class FunctionTT
+  >
 class window_resubstitution_impl
 {
 public:
@@ -205,7 +205,12 @@ private:
 
 } /* detail */
 
-template<class Ntk, class ResubstitutionFn>
+template<
+  class Ntk,
+  class ResubstitutionFn,
+  class Window = single_output_window<Ntk>,
+  class FunctionTT = typename ResubstitutionFn::function_type
+>
 void window_resubstitution( Ntk& ntk,
                             ResubstitutionFn const& resubstitution_fn = {},
                             window_resubstitution_ps const& ps = {},
@@ -214,7 +219,7 @@ void window_resubstitution( Ntk& ntk,
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
 
   window_resubstitution_stats st;
-  detail::window_resubstitution_impl impl( ntk, resubstitution_fn, ps, st );
+  detail::window_resubstitution_impl<Ntk, ResubstitutionFn, Window, FunctionTT> impl( ntk, resubstitution_fn, ps, st );
   impl.run();
 
   if ( pst )

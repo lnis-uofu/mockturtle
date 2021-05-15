@@ -477,6 +477,27 @@ TEST_CASE( "Window resubstitution of MIG using mig_resyn_bottom_up", "[resubstit
   mig_resyn_bottom_up resyn;
   window_resubstitution( fmig, resyn );
 }
+
+TEST_CASE( "Window resubstitution of MIG using akers_resyn", "[resubstitution]" )
+{
+  using namespace mockturtle::experimental;
+
+  mig_network mig;
+
+  const auto a = mig.create_pi();
+  const auto b = mig.create_pi();
+  const auto c = mig.create_pi();
+
+  const auto f = mig.create_maj( a, mig.create_maj( a, b, c ), c );
+  mig.create_po( f );
+
+  depth_view dmig{mig};
+  fanout_view fmig{dmig};
+
+  akers_resyn resyn;
+  window_resubstitution( fmig, resyn );
+}
+
 TEST_CASE( "Simulation resubstitution of MIG", "[resubstitution]" )
 {
   using namespace mockturtle::experimental;
