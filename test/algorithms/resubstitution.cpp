@@ -24,10 +24,9 @@
 
 using namespace mockturtle;
 
-
 TEST_CASE( "Resubstitution of AIGs", "[resubstitution]" )
 {
-  /* The test cases are (a,b)-pairs, where a is an index_list and b is
+  /* The test cases are (a,b)-pairs, where `a` is an index_list and `b` is
      the expected improvement after resubstitution. */
   using value_type = std::vector<uint32_t>;
   std::vector<std::pair<value_type, uint32_t>> const test_cases{
@@ -438,7 +437,7 @@ TEST_CASE( "Simulation-guided resubstitution", "[resubstitution]" )
   CHECK( aig.num_gates() == 1 );
 }
 
-TEST_CASE( "Window resubstitution of MIG using mig_resyn_exhaustive", "[resubstitution]" )
+TEST_CASE( "Window resubstitution of MIG using mig_resyn_enum", "[resubstitution]" )
 {
   using namespace mockturtle::experimental;
 
@@ -454,7 +453,7 @@ TEST_CASE( "Window resubstitution of MIG using mig_resyn_exhaustive", "[resubsti
   depth_view dmig{mig};
   fanout_view fmig{dmig};
 
-  mig_resyn_exhaustive resyn;
+  mig_resyn_enum resyn;
   window_resubstitution( fmig, resyn );
 }
 

@@ -43,18 +43,24 @@
 namespace mockturtle
 {
 
-template<typename FunctionTT = kitty::dynamic_truth_table>
-class mig_resyn_exhaustive
+enum class mig_resyn_enum_strategy
+{
+  eager,
+  exhaustive,
+};
+
+template<typename FunctionTT = kitty::dynamic_truth_table, mig_resyn_enum_strategy ResynStrategy = mig_resyn_enum_strategy::eager>
+class mig_resyn_enum
 {
 public:
   /* function representation */
-  using function_type = kitty::dynamic_truth_table;
+  using function_type = FunctionTT;
 
   /* index-list */
   using index_list_type = mig_index_list;
 
 public:
-  explicit mig_resyn_exhaustive() = default;
+  explicit mig_resyn_enum() = default;
 
   template<typename Iterator, typename TruthTables, class Fn>
   std::optional<index_list_type> operator()( FunctionTT const& target, FunctionTT const& care, Iterator begin, Iterator end, TruthTables const& tts, Fn&& fn ) const
@@ -82,12 +88,12 @@ public:
     {
       if ( target_ == ( tts[fn( *it )] & care ) )
       {
-        index_list.add_output( 2u*fn( *it ) );
+        index_list.add_output( 2u*( fn( *it ) + 1 ) );
         return index_list;
       }
       else if ( ~( target_ ) == ( tts[fn( *it )] & care ) )
       {
-        index_list.add_output( 2u*fn( *it ) + 1u );
+        index_list.add_output( 2u*( fn( *it ) + 1 ) + 1u );
         return index_list;
       }
     }
@@ -133,46 +139,87 @@ public:
         FunctionTT const& tt_z = tts[fn( *z )];
         if ( ( kitty::ternary_majority( tt_x, tt_y, tt_z ) & care ) == target_ )
         {
-          auto m = index_list.add_maj( 2u*fn( *x ) + px, 2u*fn( *y ) + py, 2u*fn( *z ) );
+          auto m = index_list.add_maj( 2u*( fn( *x ) + 1 ) + px, 2u*( fn( *y ) + 1 ) + py, 2u*( fn( *z ) + 1 ) );
           index_list.add_output( m );
           return index_list;
         }
         else if ( ( kitty::ternary_majority( tt_x, tt_y, ~tt_z ) & care ) == target_ )
         {
-          auto m = index_list.add_maj( 2u*fn( *x ) + px, 2u*fn( *y ) + py, 2u*fn( *z ) + 1 );
+          auto m = index_list.add_maj( 2u*( fn( *x ) + 1 ) + px, 2u*( fn( *y ) + 1 )+ py, 2u*( fn( *z ) + 1 ) + 1 );
           index_list.add_output( m );
           return index_list;
         }
       }
     }
 
-    /* try a two majorities built from five divisors */
-    for ( auto a = std::begin( candidates ); a != std::end( candidates ); ++a )
+    if constexpr ( ResynStrategy == mig_resyn_enum_strategy::eager )
     {
-      auto [x,y,px,py] = *a;
-      FunctionTT const& tt_x = px ? ~tts[fn( *x )] : tts[fn( *x )];
-      FunctionTT const& tt_y = py ? ~tts[fn( *y )] : tts[fn( *y )];
-      for ( auto b = a + 1; b != std::end( candidates ); ++b )
+      /* try a two majorities built from five divisors */
+      for ( auto a = std::begin( candidates ); a != std::end( candidates ); ++a )
       {
-        auto [u,v,pu,pv] = *b;
-        FunctionTT const& tt_u = pu ? ~tts[fn( *u )] : tts[fn( *u )];
-        FunctionTT const& tt_v = pv ? ~tts[fn( *v )] : tts[fn( *v )];
-        for ( auto w = v + 1; w != end; ++w )
+        auto [x,y,px,py] = *a;
+        FunctionTT const& tt_x = px ? ~tts[fn( *x )] : tts[fn( *x )];
+        FunctionTT const& tt_y = py ? ~tts[fn( *y )] : tts[fn( *y )];
+        for ( auto b = a + 1; b != std::end( candidates ); ++b )
         {
-          FunctionTT const& tt_w = tts[fn( *w )];
-          if ( ( kitty::ternary_majority( tt_x, tt_y, kitty::ternary_majority( tt_u, tt_v, tt_w ) ) & care ) == target_ )
+          auto [u,v,pu,pv] = *b;
+          FunctionTT const& tt_u = pu ? ~tts[fn( *u )] : tts[fn( *u )];
+          FunctionTT const& tt_v = pv ? ~tts[fn( *v )] : tts[fn( *v )];
+          for ( auto w = v + 1; w != end; ++w )
           {
-            auto const m0 = index_list.add_maj( 2u*fn( *u ) + pu, 2u*fn( *v ) + pv, 2u*fn( *w ) );
-            auto const m1 = index_list.add_maj( 2u*fn( *x ) + px, 2u*fn( *y ) + py, m0 );
-            index_list.add_output( m1 );
-            return index_list;
+            FunctionTT const& tt_w = tts[fn( *w )];
+            if ( ( kitty::ternary_majority( tt_x, tt_y, kitty::ternary_majority( tt_u, tt_v, tt_w ) ) & care ) == target_ )
+            {
+              auto const m0 = index_list.add_maj( 2u*( fn( *u ) + 1 ) + pu, 2u*( fn( *v ) + 1 ) + pv, 2u*( fn( *w ) + 1 ) );
+              auto const m1 = index_list.add_maj( 2u*( fn( *x ) + 1 ) + px, 2u*( fn( *y ) + 1 ) + py, m0 );
+              index_list.add_output( m1 );
+              return index_list;
+            }
+            else if ( ( kitty::ternary_majority( tt_x, tt_y, kitty::ternary_majority( tt_u, tt_v, ~tt_w ) ) & care ) == target_ )
+            {
+              auto const m0 = index_list.add_maj( 2u*( fn( *u ) + 1 ) + pu, 2u*( fn( *v ) + 1 ) + pv, 2u*( fn( *w ) + 1 ) );
+              auto const m1 = index_list.add_maj( 2u*( fn( *x ) + 1 ) + px, 2u*( fn( *y ) + 1 ) + py, m0 + 1 );
+              index_list.add_output( m1 );
+              return index_list;
+            }
           }
-          else if ( ( kitty::ternary_majority( tt_x, tt_y, kitty::ternary_majority( tt_u, tt_v, ~tt_w ) ) & care ) == target_ )
+        }
+      }
+    }
+
+    if constexpr ( ResynStrategy == mig_resyn_enum_strategy::exhaustive )
+    {
+      /* try a two majorities built from five divisors */
+      for ( auto const& [x,y,px,py] : candidates )
+      {
+        FunctionTT const& tt_x = px ? ~tts[fn( *x )] : tts[fn( *x )];
+        FunctionTT const& tt_y = py ? ~tts[fn( *y )] : tts[fn( *y )];
+        for ( auto u = begin; u != end; ++u )
+        {
+          FunctionTT const& tt_u = tts[fn( *u )];
+          for ( auto v = u + 1; v != end; ++v )
           {
-            auto const m0 = index_list.add_maj( 2u*fn( *u ) + pu, 2u*fn( *v ) + pv, 2u*fn( *w ) );
-            auto const m1 = index_list.add_maj( 2u*fn( *x ) + px, 2u*fn( *y ) + py, m0 + 1 );
-            index_list.add_output( m1 );
-            return index_list;
+            FunctionTT const& tt_v = tts[fn( *v )];
+            for ( auto w = v + 1; w != end; ++w )
+            {
+              FunctionTT const& tt_w = tts[fn( *w )];
+              for ( auto const& polarities : { 0, 1, 2, 4, 8, 9, 10, 12 } )
+              {
+                bool const pu = polarities & 0x1;
+                bool const pv = polarities & 0x2;
+                bool const pw = polarities & 0x4;
+                bool const pm = polarities & 0x8;
+
+                FunctionTT const tt_m = kitty::ternary_majority( pu ? ~tt_u : tt_u, pv ? ~tt_v : tt_v, pw ? ~tt_w : tt_w );
+                if ( ( kitty::ternary_majority( tt_x, tt_y, pm ? ~tt_m : tt_m ) & care ) == target_ )
+                {
+                  auto const m0 = index_list.add_maj( 2u*( fn( *u ) + 1 ) + pu, 2u*( fn( *v ) + 1 ) + pv, 2u*( fn( *w ) + 1 ) + pw );
+                  auto const m1 = index_list.add_maj( 2u*( fn( *x ) + 1 ) + px, 2u*( fn( *y ) + 1 ) + py, m0 + pm );
+                  index_list.add_output( m1 );
+                  return index_list;
+                }
+              }
+            }
           }
         }
       }
