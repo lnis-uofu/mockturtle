@@ -49,7 +49,10 @@ enum class mig_resyn_enum_strategy
   exhaustive,
 };
 
-template<typename FunctionTT = kitty::dynamic_truth_table, mig_resyn_enum_strategy ResynStrategy = mig_resyn_enum_strategy::eager>
+template<
+  class FunctionTT = kitty::dynamic_truth_table,
+  mig_resyn_enum_strategy ResynStrategy = mig_resyn_enum_strategy::eager
+>
 class mig_resyn_enum
 {
 public:
@@ -154,7 +157,7 @@ public:
 
     if constexpr ( ResynStrategy == mig_resyn_enum_strategy::eager )
     {
-      /* try a two majorities built from five divisors */
+      /* try two majorities built from five divisors */
       for ( auto a = std::begin( candidates ); a != std::end( candidates ); ++a )
       {
         auto [x,y,px,py] = *a;
@@ -189,7 +192,7 @@ public:
 
     if constexpr ( ResynStrategy == mig_resyn_enum_strategy::exhaustive )
     {
-      /* try a two majorities built from five divisors */
+      /* try two majorities built from five divisors */
       for ( auto const& [x,y,px,py] : candidates )
       {
         FunctionTT const& tt_x = px ? ~tts[fn( *x )] : tts[fn( *x )];
