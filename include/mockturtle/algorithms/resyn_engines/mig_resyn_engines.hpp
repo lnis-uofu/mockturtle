@@ -43,6 +43,145 @@
 namespace mockturtle
 {
 
+template<typename FunctionTT = kitty::dynamic_truth_table>
+class mig_resyn_exhaustive
+{
+public:
+  /* function representation */
+  using function_type = kitty::dynamic_truth_table;
+
+  /* index-list */
+  using index_list_type = mig_index_list;
+
+public:
+  explicit mig_resyn_exhaustive() = default;
+
+  template<typename Iterator, typename TruthTables, class Fn>
+  std::optional<index_list_type> operator()( FunctionTT const& target, FunctionTT const& care, Iterator begin, Iterator end, TruthTables const& tts, Fn&& fn ) const
+  {
+    index_list_type index_list;
+    uint32_t const num_divisors = std::distance( begin, end );
+    index_list.add_inputs( num_divisors );
+
+    FunctionTT const target_ = target & care;
+
+    /* try constant */
+    if ( kitty::is_const0( target_ ) )
+    {
+      index_list.add_output( 0 );
+      return index_list;
+    }
+    else if ( kitty::is_const0( ~( target_ ) ) )
+    {
+      index_list.add_output( 1 );
+      return index_list;
+    }
+
+    /* try a single divisor */
+    for ( auto it = begin; it != end; ++it )
+    {
+      if ( target_ == ( tts[fn( *it )] & care ) )
+      {
+        index_list.add_output( 2u*fn( *it ) );
+        return index_list;
+      }
+      else if ( ~( target_ ) == ( tts[fn( *it )] & care ) )
+      {
+        index_list.add_output( 2u*fn( *it ) + 1u );
+        return index_list;
+      }
+    }
+
+    /* Boolean filtering */
+    std::vector<std::tuple<Iterator,Iterator,bool,bool>> candidates;
+    for ( auto x = begin; x != end; ++x )
+    {
+      for ( auto y = x + 1; y != end; ++y )
+      {
+        FunctionTT const& tt_x = tts[fn( *x )];
+        FunctionTT const& tt_y = tts[fn( *y )];
+        if ( kitty::ternary_majority( tt_x, tt_y, target_ ) == target_ )
+        {
+          // fmt::print( "<{},{},*> = T\n", *x, *y );
+          candidates.emplace_back( x, y, false, false );
+        }
+        else if ( ( kitty::ternary_majority( ~tt_x, tt_y, target ) & care ) == target_ )
+        {
+          // fmt::print( "<~{},{},*> = T\n", *x, *y );
+          candidates.emplace_back( x, y, true, false );
+        }
+        else if ( ( kitty::ternary_majority( tt_x, ~tt_y, target ) & care ) == target_ )
+        {
+          // fmt::print( "<{},~{},*> = T\n", *x, *y );
+          candidates.emplace_back( x, y, false, true );
+        }
+        else if ( ( kitty::ternary_majority( ~tt_x, ~tt_y, target ) & care ) == target_ )
+        {
+          // fmt::print( "<~{},~{},*> = T\n", *x, *y );
+          candidates.emplace_back( x, y, true, true );
+        }
+      }
+    }
+
+    /* try a majority built from three divisors */
+    for ( auto const& [x,y,px,py] : candidates )
+    {
+      FunctionTT const& tt_x = px ? ~tts[fn( *x )] : tts[fn( *x )];
+      FunctionTT const& tt_y = py ? ~tts[fn( *y )] : tts[fn( *y )];
+      for ( auto z = y + 1; z != end; ++z )
+      {
+        FunctionTT const& tt_z = tts[fn( *z )];
+        if ( ( kitty::ternary_majority( tt_x, tt_y, tt_z ) & care ) == target_ )
+        {
+          auto m = index_list.add_maj( 2u*fn( *x ) + px, 2u*fn( *y ) + py, 2u*fn( *z ) );
+          index_list.add_output( m );
+          return index_list;
+        }
+        else if ( ( kitty::ternary_majority( tt_x, tt_y, ~tt_z ) & care ) == target_ )
+        {
+          auto m = index_list.add_maj( 2u*fn( *x ) + px, 2u*fn( *y ) + py, 2u*fn( *z ) + 1 );
+          index_list.add_output( m );
+          return index_list;
+        }
+      }
+    }
+
+    /* try a two majorities built from five divisors */
+    for ( auto a = std::begin( candidates ); a != std::end( candidates ); ++a )
+    {
+      auto [x,y,px,py] = *a;
+      FunctionTT const& tt_x = px ? ~tts[fn( *x )] : tts[fn( *x )];
+      FunctionTT const& tt_y = py ? ~tts[fn( *y )] : tts[fn( *y )];
+      for ( auto b = a + 1; b != std::end( candidates ); ++b )
+      {
+        auto [u,v,pu,pv] = *b;
+        FunctionTT const& tt_u = pu ? ~tts[fn( *u )] : tts[fn( *u )];
+        FunctionTT const& tt_v = pv ? ~tts[fn( *v )] : tts[fn( *v )];
+        for ( auto w = v + 1; w != end; ++w )
+        {
+          FunctionTT const& tt_w = tts[fn( *w )];
+          if ( ( kitty::ternary_majority( tt_x, tt_y, kitty::ternary_majority( tt_u, tt_v, tt_w ) ) & care ) == target_ )
+          {
+            auto const m0 = index_list.add_maj( 2u*fn( *u ) + pu, 2u*fn( *v ) + pv, 2u*fn( *w ) );
+            auto const m1 = index_list.add_maj( 2u*fn( *x ) + px, 2u*fn( *y ) + py, m0 );
+            index_list.add_output( m1 );
+            return index_list;
+          }
+          else if ( ( kitty::ternary_majority( tt_x, tt_y, kitty::ternary_majority( tt_u, tt_v, ~tt_w ) ) & care ) == target_ )
+          {
+            auto const m0 = index_list.add_maj( 2u*fn( *u ) + pu, 2u*fn( *v ) + pv, 2u*fn( *w ) );
+            auto const m1 = index_list.add_maj( 2u*fn( *x ) + px, 2u*fn( *y ) + py, m0 + 1 );
+            index_list.add_output( m1 );
+            return index_list;
+          }
+        }
+      }
+    }
+
+    return std::nullopt;
+  }
+};
+
 struct mig_resyn_engine_params
 {
   /*! \brief Maximum size (number of gates) of the dependency circuit. */
