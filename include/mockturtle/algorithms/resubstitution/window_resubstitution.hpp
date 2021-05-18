@@ -118,6 +118,11 @@ public:
       if ( Window win = construct_window( pivot ) )
       {
         resynthesize_window( pivot, win );
+
+        /* cleanup */
+        win.foreach_divisor( [&]( node const& n, uint32_t index ){
+          ntk.set_value( n, 0 );
+        });
       }
     }
   }
@@ -138,7 +143,6 @@ private:
 
     FunctionTT const target = tts[ntk.value( pivot )];
     FunctionTT const care = ~target.construct();
-
     auto const index_list = resyn_fn( target, care, win.begin_nonff_nodes(), win.end_nonff_divisors(), tts,
                                       [&]( node const& n ){ return ntk.value( n ); } );
     if ( !index_list )
@@ -146,24 +150,20 @@ private:
       return false;
     }
 
-    fmt::print( "index_list = {}\n", to_index_list_string( *index_list ) );
-
-    /* TODO: compute gain */
-    std::cout << "Number of MAJ gates (before) = " << win.num_divisors() << std::endl;
-    std::cout << "Number of MAJ gates (after) = " << index_list->num_gates() << std::endl;
-    if ( win.num_divisors() <= index_list->num_gates() )
+    if ( win.mffc_size() <= index_list->num_gates() )
     {
       return false;
     }
 
     std::vector<signal> outputs;
     insert( ntk, win.begin_nonff_nodes(), win.end_nonff_nodes(), *index_list,
-            [&]( signal const& f ){ outputs.emplace_back( f ); } );
+            [&]( signal const& f ){ outputs.emplace_back( f ); });
 
-    assert( outputs.size() == 1u );
-    ntk.substitute_node( pivot, outputs[0u] );
     fmt::print( "substitute {} with {}{}\n",
                 pivot, ntk.is_complemented( outputs[0] ) ? "~" : "", ntk.get_node( outputs[0] ) );
+    assert( outputs.size() == 1u );
+    ntk.substitute_node( pivot, outputs[0u] );
+
     return true;
   }
 
@@ -175,34 +175,36 @@ private:
     {
       tts.resize( num_divisors );
     }
+    tts.clear(); /* cleanup */
 
     /* simulate in topological order */
     win.foreach_leaf( [&]( node const& n, uint32_t index ){
-      FunctionTT tt = kitty::create<FunctionTT>( ps.win_ps.cut_size );
+      FunctionTT tt = kitty::create<FunctionTT>( win.num_leaves() );
       kitty::create_nth_var( tt, index );
       tts[index] = tt;
       ntk.set_value( n, index );
 
-      fmt::print( "{:3}. {} ({})\n",
-                  index,
-                  fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_magenta ), "{:5}", n ),
-                  fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_red ), "{}", kitty::to_hex( tt ) ) );
+      // fmt::print( "{:3}. {} ({})\n",
+      //             index,
+      //             fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_magenta ), "{:5}", n ),
+      //             fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_red ), "{}", kitty::to_hex( tt ) ) );
     });
 
     std::array<FunctionTT, Ntk::max_fanin_size> fi_tts;
     win.foreach_divisor( [&]( node const& n, uint32_t index ){
       uint32_t fi_index{0};
       ntk.foreach_fanin( n, [&]( signal const& fi ){
-        fi_tts[fi_index++] = ntk.is_complemented( fi ) ? ~tts[ntk.value( ntk.get_node( fi ) )] : tts[ntk.value( ntk.get_node( fi ) )];
+        node const f = ntk.get_node( fi );
+        fi_tts[fi_index++] = ntk.is_constant( f ) ? kitty::create<FunctionTT>( win.num_leaves() ) : tts[ntk.value( f )];
       });
 
       tts[index] = ntk.template compute<FunctionTT>( n, std::cbegin( fi_tts ), std::cbegin( fi_tts ) + fi_index );
       ntk.set_value( n, index );
 
-      fmt::print( "{:3}. {} ({})\n",
-                  index,
-                  fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_magenta ), "{:5}", n ),
-                  fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_blue ), "{}", kitty::to_hex( tts[index] ) ) );
+      // fmt::print( "{:3}. {} ({})\n",
+      //             index,
+      //             fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_magenta ), "{:5}", n ),
+      //             fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_blue ), "{}", kitty::to_hex( tts[index] ) ) );
     });
   }
 
