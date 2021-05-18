@@ -437,24 +437,60 @@ TEST_CASE( "Simulation-guided resubstitution", "[resubstitution]" )
   CHECK( aig.num_gates() == 1 );
 }
 
-TEST_CASE( "Window resubstitution of MIG using mig_resyn_enum", "[resubstitution]" )
+TEST_CASE( "Window resubstitution of MIG using mig_resyn_enum<eager>", "[resubstitution]" )
 {
   using namespace mockturtle::experimental;
 
   mig_network mig;
 
-  const auto a = mig.create_pi();
-  const auto b = mig.create_pi();
-  const auto c = mig.create_pi();
+  auto const a = mig.create_pi();
+  auto const b = mig.create_pi();
+  auto const c = mig.create_pi();
 
-  const auto f = mig.create_maj( a, mig.create_maj( a, b, c ), c );
+  auto const f = mig.create_maj( a, mig.create_maj( a, b, c ), c );
   mig.create_po( f );
+
+  auto const tt = simulate<kitty::static_truth_table<3u>>( mig )[0];
+  CHECK( tt._bits == 0xe8 );
+  CHECK( mig.num_gates() == 2u );
 
   depth_view dmig{mig};
   fanout_view fmig{dmig};
 
-  mig_resyn_enum resyn;
+  mig_resyn_enum<kitty::dynamic_truth_table, mig_resyn_enum_strategy::eager> resyn{};
   window_resubstitution( fmig, resyn );
+
+  auto const tt_opt = simulate<kitty::static_truth_table<3u>>( mig )[0];
+  CHECK( tt_opt._bits == tt._bits );
+  CHECK( mig.num_gates() == 1u );
+}
+
+TEST_CASE( "Window resubstitution of MIG using mig_resyn_enum<exhaustive>", "[resubstitution]" )
+{
+  using namespace mockturtle::experimental;
+
+  mig_network mig;
+
+  auto const a = mig.create_pi();
+  auto const b = mig.create_pi();
+  auto const c = mig.create_pi();
+
+  auto const f = mig.create_maj( a, mig.create_maj( a, b, c ), c );
+  mig.create_po( f );
+
+  auto const tt = simulate<kitty::static_truth_table<3u>>( mig )[0];
+  CHECK( tt._bits == 0xe8 );
+  CHECK( mig.num_gates() == 2u );
+
+  depth_view dmig{mig};
+  fanout_view fmig{dmig};
+
+  mig_resyn_enum<kitty::dynamic_truth_table, mig_resyn_enum_strategy::exhaustive> resyn{};
+  window_resubstitution( fmig, resyn );
+
+  auto const tt_opt = simulate<kitty::static_truth_table<3u>>( mig )[0];
+  CHECK( tt_opt._bits == tt._bits );
+  CHECK( mig.num_gates() == 1u );
 }
 
 TEST_CASE( "Window resubstitution of MIG using mig_resyn", "[resubstitution]" )

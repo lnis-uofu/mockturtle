@@ -22,6 +22,8 @@
 #include <mockturtle/algorithms/node_resynthesis/xmg3_npn.hpp>
 #include <mockturtle/algorithms/refactoring.hpp>
 #include <mockturtle/algorithms/resubstitution.hpp>
+#include <mockturtle/algorithms/resubstitution/resyn_strategies.hpp>
+#include <mockturtle/algorithms/resubstitution/window_resubstitution.hpp>
 #include <mockturtle/algorithms/satlut_mapping.hpp>
 #include <mockturtle/algorithms/xmg_resub.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
@@ -211,6 +213,76 @@ TEST_CASE( "Test quality improvement of MIG k-resubstitution", "[quality]" )
   } );
 
   CHECK( v == std::vector<uint32_t>{{1, 59, 3, 16, 3, 25, 107, 108, 183, 438, 74}} );
+}
+
+TEST_CASE( "Test quality improvement of MIG window resubstitution using mig_resyn_enum<eager>", "[quality]" )
+{
+  mig_resyn_enum<kitty::dynamic_truth_table, mig_resyn_enum_strategy::eager> resyn{};
+  auto const v = foreach_benchmark<mig_network>( [&resyn]( auto& ntk, auto ) {
+    uint32_t const before = ntk.num_gates();
+    depth_view dntk{ntk};
+    fanout_view fntk{dntk};
+    experimental::window_resubstitution( fntk, resyn );
+    ntk = cleanup_dangling( ntk );
+    std::cout << before << ' ' << ntk.num_gates() << std::endl;
+    return before - ntk.num_gates();
+  } );
+
+  CHECK( v == std::vector<uint32_t>{{1, 59, 3, 16, 3, 25, 107, 108, 183, 438, 74}} );
+}
+
+TEST_CASE( "Test quality improvement of MIG window resubstitution using mig_resyn_enum<exhaustive>", "[quality]" )
+{
+  mig_resyn_enum<kitty::dynamic_truth_table, mig_resyn_enum_strategy::exhaustive> resyn{};
+  auto const v = foreach_benchmark<mig_network>( [&resyn]( auto& ntk, auto ) {
+    uint32_t const before = ntk.num_gates();
+    depth_view dntk{ntk};
+    fanout_view fntk{dntk};
+    experimental::window_resubstitution( fntk, resyn );
+    ntk = cleanup_dangling( ntk );
+    return before - ntk.num_gates();
+  } );
+
+  CHECK( v == std::vector<uint32_t>{{1, 59, 3, 16, 3, 25, 107, 108, 183, 438, 74}} );
+}
+
+TEST_CASE( "Test quality improvement of MIG window resubstitution using mig_resyn", "[quality]" )
+{
+  experimental::mig_resyn resyn{};
+  auto const v = foreach_benchmark<mig_network>( [&resyn]( auto& ntk, auto ) {
+    uint32_t const before = ntk.num_gates();
+    depth_view dntk{ntk};
+    fanout_view fntk{dntk};
+    experimental::window_resubstitution( fntk, resyn );
+    ntk = cleanup_dangling( ntk );
+    return before - ntk.num_gates();
+  } );
+}
+
+TEST_CASE( "Test quality improvement of MIG window resubstitution using mig_resyn_bottom_up", "[quality]" )
+{
+  experimental::mig_resyn_bottom_up resyn{};
+  auto const v = foreach_benchmark<mig_network>( [&resyn]( auto& ntk, auto ) {
+    uint32_t const before = ntk.num_gates();
+    depth_view dntk{ntk};
+    fanout_view fntk{dntk};
+    experimental::window_resubstitution( fntk, resyn );
+    ntk = cleanup_dangling( ntk );
+    return before - ntk.num_gates();
+  } );
+}
+
+TEST_CASE( "Test quality improvement of MIG window resubstitution using akers_resyn", "[quality]" )
+{
+  experimental::akers_resyn resyn{};
+  auto const v = foreach_benchmark<mig_network>( [&resyn]( auto& ntk, auto ) {
+    uint32_t const before = ntk.num_gates();
+    depth_view dntk{ntk};
+    fanout_view fntk{dntk};
+    experimental::window_resubstitution( fntk, resyn );
+    ntk = cleanup_dangling( ntk );
+    return before - ntk.num_gates();
+  } );
 }
 
 TEST_CASE( "Test quality of MIG algebraic depth rewriting", "[quality]" )

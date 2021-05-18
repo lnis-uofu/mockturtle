@@ -85,67 +85,142 @@ public:
     return ntk_ != nullptr;
   }
 
-  const_iterator begin_divisors() const noexcept
+  /*! \brief Begin iterator of leaves */
+  const_iterator begin_leaves() const noexcept
   {
     return std::cbegin( nodes_ );
   }
 
+  /*! \brief End iterator of leaves */
+  const_iterator end_leaves() const noexcept
+  {
+    return std::cbegin( nodes_ ) + num_leaves_;
+  }
+
+  /*! \brief Begin iterator of divisors (without leaves, but with MFFC nodes) */
+  const_iterator begin_divisors() const noexcept
+  {
+    return std::cbegin( nodes_ ) + num_leaves_;
+  }
+
+  /*! \brief End iterator of divisors (without leaves, but with MFFC nodes) */
   const_iterator end_divisors() const noexcept
   {
     return std::cend( nodes_ );
   }
 
+  /*! \brief Begin iterator of divisors (without leaves and MFFC nodes) */
+  const_iterator begin_nonff_divisors() const noexcept
+  {
+    return std::cbegin( nodes_ ) + num_leaves_;
+  }
+
+  /*! \brief End iterator of divisors (without leaves and MFFC nodes) */
+  const_iterator end_nonff_divisors() const noexcept
+  {
+    return std::cbegin( nodes_ ) + nodes_.size() - mffc_size_;
+  }
+
+  /*! \brief Begin iterator of nodes (with leaves, divisors, and MFFC nodes) */
+  const_iterator begin_nodes() const noexcept
+  {
+    return std::cbegin( nodes_ );
+  }
+
+  /*! \brief End iterator of nodes (with leaves, divisors, and MFFC nodes) */
+  const_iterator end_nodes() const noexcept
+  {
+    return std::cend( nodes_ );
+  }
+
+  /*! \brief Begin iterator of nodes (with leaves and divisors, but without MFFC nodes) */
+  const_iterator begin_nonff_nodes() const noexcept
+  {
+    return std::cbegin( nodes_ );
+  }
+
+  /*! \brief End iterator of nodes (with leaves and divisors, but without MFFC nodes) */
+  const_iterator end_nonff_nodes() const noexcept
+  {
+    return std::cbegin( nodes_ ) + nodes_.size() - mffc_size_;
+  }
+
+  /*! \brief Number of leaf nodes */
   uint32_t num_leaves() const noexcept
   {
     return num_leaves_;
   }
 
-  uint32_t num_divisors() const noexcept
-  {
-    return nodes_.size() - num_leaves_ - mffc_size_;
-  }
-
+  /*! \brief Number of MFFC nodes */
   uint32_t mffc_size() const noexcept
   {
     return mffc_size_;
   }
 
-  uint32_t size() const noexcept
+  /*! \brief Number of divisors (without leaves, but with MFFC nodes) */
+  uint32_t num_divisors() const noexcept
   {
-    return nodes_.size();
+    return nodes_.size() - num_leaves_;
   }
 
+  /*! \brief Number of non-fanout-free divisors (without leaves and MFFC nodes) */
+  uint32_t num_nonff_divisors() const noexcept
+  {
+    return nodes_.size() - num_leaves_ - mffc_size_;
+  }
+
+  /*! \brief Volume of the window */
   double volume() const noexcept
   {
     return double( nodes_.size() - num_leaves_ ) / num_leaves_;
   }
 
+  /*! Iterate over leaf nodes */
   template<class Fn>
   void foreach_leaf( Fn&& fn ) const noexcept
   {
     uint32_t index{0};
-    auto it = std::begin( nodes_ );
-    auto const ie = std::begin( nodes_ ) + num_leaves_;
+    auto it = begin_leaves();
+    auto const ie = end_leaves();
     while ( it != ie )
     {
-      assert( index < size() );
+      assert( index < nodes_.size() );
       fn( *it, index++ );
       ++it;
     }
+    assert( index == num_leaves() );
   }
 
-  template<bool exclude_mffc = false, class Fn>
+  /*! Iterate over divisors (without leaves and MFFC nodes) */
+  template<class Fn>
+  void foreach_nonff_divisor( Fn&& fn ) const noexcept
+  {
+    uint32_t index{num_leaves_};
+    auto it = begin_nonff_divisors();
+    auto const ie = end_nonff_divisors();
+    while ( it != ie )
+    {
+      assert( index < nodes_.size() );
+      fn( *it, index++ );
+      ++it;
+    }
+    assert( index == num_leaves_ + num_nonff_divisors() );
+  }
+
+  /*! Iterate over divisors (without leaves, but with MFFC nodes) */
+  template<class Fn>
   void foreach_divisor( Fn&& fn ) const noexcept
   {
     uint32_t index{num_leaves_};
-    auto it = std::begin( nodes_ ) + num_leaves_;
-    auto const ie = exclude_mffc ? std::begin( nodes_ ) + ( size() - num_leaves_ - mffc_size_ ) : std::end( nodes_ );
+    auto it = begin_divisors();
+    auto const ie = end_divisors();
     while ( it != ie )
     {
-      assert( index < size() );
+      assert( index < nodes_.size() );
       fn( *it, index++ );
       ++it;
     }
+    assert( index == num_leaves_ + num_divisors() );
   }
 
 private:

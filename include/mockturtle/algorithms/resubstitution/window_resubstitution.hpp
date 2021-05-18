@@ -72,7 +72,7 @@ namespace detail
 
 template<
   class Ntk,
-  class ResubstitutionFn,
+  class ResynFn,
   class Window,
   class FunctionTT
   >
@@ -84,11 +84,11 @@ public:
 
 public:
   window_resubstitution_impl( Ntk& ntk,
-                              ResubstitutionFn const& resubstitution_fn,
+                              ResynFn const& resyn_fn,
                               window_resubstitution_ps const& ps,
                               window_resubstitution_stats& st )
     : ntk( ntk )
-    , resubstitution_fn( resubstitution_fn )
+    , resyn_fn( resyn_fn )
     , wm( ntk, ps.win_ps, st.win_st )
     , tts( 100 )
     , ps( ps )
@@ -136,10 +136,11 @@ private:
 
     /* TODO: What interface do we want here? */
 
-    FunctionTT target = tts[ntk.value( pivot )];
-    FunctionTT care = ~target.construct();
-    auto const index_list = resubstitution_fn( target, care, win.begin_divisors(), win.end_divisors(), tts,
-                                               [&]( node const& n ){ return ntk.value( n ); } );
+    FunctionTT const target = tts[ntk.value( pivot )];
+    FunctionTT const care = ~target.construct();
+
+    auto const index_list = resyn_fn( target, care, win.begin_nonff_nodes(), win.end_nonff_divisors(), tts,
+                                      [&]( node const& n ){ return ntk.value( n ); } );
     if ( !index_list )
     {
       return false;
@@ -147,21 +148,32 @@ private:
 
     fmt::print( "index_list = {}\n", to_index_list_string( *index_list ) );
 
+    /* TODO: compute gain */
+    std::cout << "Number of MAJ gates (before) = " << win.num_divisors() << std::endl;
+    std::cout << "Number of MAJ gates (after) = " << index_list->num_gates() << std::endl;
+    if ( win.num_divisors() <= index_list->num_gates() )
+    {
+      return false;
+    }
+
     std::vector<signal> outputs;
-    insert( ntk, win.begin_divisors(), win.end_divisors(), *index_list,
+    insert( ntk, win.begin_nonff_nodes(), win.end_nonff_nodes(), *index_list,
             [&]( signal const& f ){ outputs.emplace_back( f ); } );
 
     assert( outputs.size() == 1u );
     ntk.substitute_node( pivot, outputs[0u] );
+    fmt::print( "substitute {} with {}{}\n",
+                pivot, ntk.is_complemented( outputs[0] ) ? "~" : "", ntk.get_node( outputs[0] ) );
     return true;
   }
 
   void simulate_window( Window const& win )
   {
     /* grow TTs if necessary if necessary*/
-    if ( tts.size() < win.size() )
+    auto const num_divisors = win.num_nonff_divisors();
+    if ( tts.size() < num_divisors )
     {
-      tts.resize( win.size() );
+      tts.resize( num_divisors );
     }
 
     /* simulate in topological order */
@@ -196,7 +208,7 @@ private:
 
 private:
   Ntk& ntk;
-  ResubstitutionFn const& resubstitution_fn;
+  ResynFn const& resyn_fn;
   window_manager<Ntk, Window> wm;
   std::vector<FunctionTT> tts;
   window_resubstitution_ps const& ps;
@@ -207,19 +219,19 @@ private:
 
 template<
   class Ntk,
-  class ResubstitutionFn,
+  class ResynFn,
   class Window = single_output_window<Ntk>,
-  class FunctionTT = typename ResubstitutionFn::function_type
+  class FunctionTT = typename ResynFn::function_type
 >
 void window_resubstitution( Ntk& ntk,
-                            ResubstitutionFn const& resubstitution_fn = {},
+                            ResynFn const& resyn_fn = {},
                             window_resubstitution_ps const& ps = {},
                             window_resubstitution_stats* pst = nullptr )
 {
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
 
   window_resubstitution_stats st;
-  detail::window_resubstitution_impl<Ntk, ResubstitutionFn, Window, FunctionTT> impl( ntk, resubstitution_fn, ps, st );
+  detail::window_resubstitution_impl<Ntk, ResynFn, Window, FunctionTT> impl( ntk, resyn_fn, ps, st );
   impl.run();
 
   if ( pst )
