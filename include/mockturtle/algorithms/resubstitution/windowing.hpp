@@ -163,10 +163,10 @@ public:
     return nodes_.size() - num_leaves_;
   }
 
-  /*! \brief Number of non-fanout-free divisors (without leaves and MFFC nodes) */
+  /*! \brief Number of non-fanout-free divisors (wit leaves, but without MFFC nodes) */
   uint32_t num_nonff_divisors() const noexcept
   {
-    return nodes_.size() - num_leaves_ - mffc_size_;
+    return nodes_.size() - mffc_size_;
   }
 
   /*! \brief Volume of the window */
@@ -221,6 +221,22 @@ public:
       ++it;
     }
     assert( index == num_leaves_ + num_divisors() );
+  }
+
+  /*! Iterate over nodes */
+  template<class Fn>
+  void foreach_nodes( Fn&& fn ) const noexcept
+  {
+    uint32_t index{0};
+    auto it = begin_nodes();
+    auto const ie = end_nodes();
+    while ( it != ie )
+    {
+      assert( index < nodes_.size() );
+      fn( *it, index++ );
+      ++it;
+    }
+    assert( index == nodes_.size() );
   }
 
 private:

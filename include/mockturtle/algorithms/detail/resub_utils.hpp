@@ -142,7 +142,10 @@ private:
     } );
 
     /* collect the internal nodes */
-    cone.emplace_back( n );
+    if ( n != 0 )
+    {
+      cone.emplace_back( n );
+    }
   }
 
   void node_mffc_cone( node const& n, std::vector<node>& cone )
