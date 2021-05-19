@@ -121,6 +121,17 @@ public:
     return std::cbegin( nodes_ ) + nodes_.size() - mffc_size_;
   }
 
+  /*! \brief Begin iterator of divisors (without leaves and MFFC nodes) */
+  const_iterator begin_ff_divisors() const noexcept
+  {
+    return std::cbegin( nodes_ ) + nodes_.size() - mffc_size_;
+  }
+
+  /*! \brief End iterator of divisors (without leaves and MFFC nodes) */
+  const_iterator end_ff_divisors() const noexcept
+  {
+    return std::cend( nodes_ );
+  }
   /*! \brief Begin iterator of nodes (with leaves, divisors, and MFFC nodes) */
   const_iterator begin_nodes() const noexcept
   {
@@ -225,7 +236,7 @@ public:
 
   /*! Iterate over nodes */
   template<class Fn>
-  void foreach_nodes( Fn&& fn ) const noexcept
+  void foreach_node( Fn&& fn ) const noexcept
   {
     uint32_t index{0};
     auto it = begin_nodes();
@@ -354,27 +365,31 @@ public:
     detail::node_mffc_inside<Ntk> mffc_cover{ntk};
     mffc_cover.run( pivot, nodes, mffc );
 
-    /* add the leaves of the cut to the nodes */
+    id_visited = ntk.trav_id() + 1;
+    id_mffc = ntk.trav_id() + 2;
     ntk.incr_trav_id();
-    ntk.set_visited( 0, ntk.trav_id() );
+    ntk.incr_trav_id();
+
+    /* add the leaves of the cut to the nodes */
+    ntk.set_visited( 0, id_visited );
     for ( node const& l : nodes )
     {
-      ntk.set_visited( l, ntk.trav_id() );
+      ntk.set_visited( l, id_visited );
     }
 
     /* mark nodes in the MFFC */
     for ( node const& t : mffc )
     {
-      ntk.set_value( t, 1 );
+      ntk.set_visited( t, id_mffc );
     }
 
     /* add nodes in the cone without MFFC */
     add_cone_rec( pivot );
 
-    /* unmark the current MFFC */
+    /* mark MFFC visited */
     for ( node const& t : mffc )
     {
-      ntk.set_value( t, 0 );
+      ntk.set_visited( t, id_visited );
     }
 
     /* check if the number of divisors is not exceeded */
@@ -401,14 +416,14 @@ public:
 
       /* if the fanout has all fanins in the set, add it */
       ntk.foreach_fanout( d, [&]( node const& p ) {
-        if ( ntk.visited( p ) == ntk.trav_id() || ntk.level( p ) > max_depth )
+        if ( ntk.visited( p ) == id_visited || ntk.level( p ) > max_depth )
         {
           return true; /* next fanout */
         }
 
         bool all_fanins_visited{true};
         ntk.foreach_fanin( p, [&]( signal const & g ) {
-          if ( ntk.visited( ntk.get_node( g ) ) != ntk.trav_id() )
+          if ( ntk.visited( ntk.get_node( g ) ) != id_visited )
           {
             all_fanins_visited = false;
             return false; /* terminate fanin-loop */
@@ -437,7 +452,7 @@ public:
         }
 
         nodes.emplace_back( p );
-        ntk.set_visited( p, ntk.trav_id() );
+        ntk.set_visited( p, id_visited );
 
         /* quit computing divisors if there are too many of them */
         if ( ++counter == limit )
@@ -470,17 +485,21 @@ public:
   void add_cone_rec( node const& n )
   {
     /* skip constant node and visited nodes */
-    if ( ntk.visited( n ) == ntk.trav_id() )
+    if ( ntk.visited( n ) == id_visited )
     {
       return;
     }
-    ntk.set_visited( n, ntk.trav_id() );
+    else if ( ntk.visited( n ) != id_mffc )
+    {
+      ntk.set_visited( n, id_visited );
+    }
+
     ntk.foreach_fanin( n, [&]( signal const& fi ) {
       add_cone_rec( ntk.get_node( fi ) );
     } );
 
     /* collect the internal nodes */
-    if ( ntk.value( n ) == 0 )
+    if ( ntk.visited( n ) != id_mffc )
     {
       nodes.emplace_back( n );
     }
@@ -497,6 +516,9 @@ private:
 
   std::vector<node> nodes;
   std::vector<node> mffc;
+
+  uint32_t id_visited{};
+  uint32_t id_mffc{};
 }; /* window_manager */
 
 template<class Ntk>
