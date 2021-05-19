@@ -330,6 +330,11 @@ private:
   std::vector<FunctionTT> tts;
   window_resubstitution_ps const& ps;
   window_resubstitution_stats& st;
+
+  /* events */
+  std::shared_ptr<typename network_events<Ntk>::add_event_type> add_event;
+  std::shared_ptr<typename network_events<Ntk>::modified_event_type> modified_event;
+  std::shared_ptr<typename network_events<Ntk>::delete_event_type> delete_event;
 };
 
 } /* detail */
