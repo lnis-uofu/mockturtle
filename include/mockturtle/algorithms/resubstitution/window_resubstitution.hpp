@@ -229,8 +229,11 @@ private:
     default_simulator<kitty::dynamic_truth_table> sim( win.num_leaves() );
     std::unordered_map<node, FunctionTT> node_to_tts;
     node_to_tts[0] = sim.compute_constant( false );
-    win.foreach_leaf( [&]( node const& leave, auto index ){
-      node_to_tts[leave] = sim.compute_pi( index );
+    win.foreach_leaf( [&]( node const& n, auto index ){
+      node_to_tts[n] = tts[index];
+    } );
+    win.foreach_nonff_divisor( [&]( node const& n, auto index ){
+      node_to_tts[n] = tts[index];
     } );
 
     FunctionTT const resimulated = simulate_function( ntk, s, node_to_tts, sim );
