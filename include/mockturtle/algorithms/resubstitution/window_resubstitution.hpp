@@ -209,6 +209,7 @@ private:
     } );
 
     FunctionTT const resimulated = simulate_function( ntk, s, node_to_tts, sim );
+#if 0
     if ( ( resimulated & care ) != ( expected & care ) )
     {
       fmt::print( "EXPECT: {}\n",
@@ -223,6 +224,7 @@ private:
       fmt::print( "RE-SIM: {}\n",
                   fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_green ), "{}", kitty::to_hex( resimulated ) ) );
     }
+#endif
     assert( ( resimulated & care ) == ( expected & care ) );
 
     return false;
@@ -236,7 +238,6 @@ private:
     {
       tts.resize( num_divisors );
     }
-    tts.clear(); /* cleanup */
 
     /* simulate in topological order */
     win.foreach_leaf( [&]( node const& n, uint32_t index ){
