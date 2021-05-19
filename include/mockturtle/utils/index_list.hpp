@@ -574,7 +574,7 @@ inline void insert_using_nodes_iterator( Ntk& ntk, BeginIter begin, EndIter end,
     /* fanins */
     if ( ( var - 1 ) < indices.num_pis() )
     {
-      return ntk.make_signal( *( begin + ( var - 1 ) ) );
+      return complemented ? !ntk.make_signal( *( begin + ( var - 1 ) ) ) : ntk.make_signal( *( begin + ( var - 1 ) ) );
     }
 
     /* internal nodes */
