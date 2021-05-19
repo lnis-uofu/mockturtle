@@ -174,10 +174,10 @@ public:
     return nodes_.size() - num_leaves_;
   }
 
-  /*! \brief Number of non-fanout-free divisors (wit leaves, but without MFFC nodes) */
+  /*! \brief Number of non-fanout-free divisors (without leaves and MFFC nodes) */
   uint32_t num_nonff_divisors() const noexcept
   {
-    return nodes_.size() - mffc_size_;
+    return nodes_.size() - num_leaves_ - mffc_size_;
   }
 
   /*! \brief Volume of the window */

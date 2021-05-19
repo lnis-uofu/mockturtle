@@ -180,8 +180,8 @@ public:
             }
             else if ( ( kitty::ternary_majority( tt_x, tt_y, kitty::ternary_majority( tt_u, tt_v, ~tt_w ) ) & care ) == target_ )
             {
-              auto const m0 = index_list.add_maj( 2u*( fn( *u ) + 1 ) + pu, 2u*( fn( *v ) + 1 ) + pv, 2u*( fn( *w ) + 1 ) );
-              auto const m1 = index_list.add_maj( 2u*( fn( *x ) + 1 ) + px, 2u*( fn( *y ) + 1 ) + py, m0 + 1 );
+              auto const m0 = index_list.add_maj( 2u*( fn( *u ) + 1 ) + pu, 2u*( fn( *v ) + 1 ) + pv, 2u*( fn( *w ) + 1 ) + 1 );
+              auto const m1 = index_list.add_maj( 2u*( fn( *x ) + 1 ) + px, 2u*( fn( *y ) + 1 ) + py, m0 );
               index_list.add_output( m1 );
               return index_list;
             }
