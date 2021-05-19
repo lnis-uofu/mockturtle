@@ -164,6 +164,41 @@ public:
   }
 };
 
+/*! \brief Simulates truth tables.
+ *
+ * This simulator simulates truth tables.  Each primary input is assigned the
+ * projection function according to the index.  The number of variables be
+ * passed to the constructor of the simulator.
+ */
+template<>
+class default_simulator<kitty::partial_truth_table>
+{
+public:
+  default_simulator() = delete;
+  default_simulator( unsigned num_vars ) : num_vars( num_vars ) {}
+
+  kitty::partial_truth_table compute_constant( bool value ) const
+  {
+    kitty::partial_truth_table tt( 1 << num_vars );
+    return value ? ~tt : tt;
+  }
+
+  kitty::partial_truth_table compute_pi( uint32_t index ) const
+  {
+    kitty::partial_truth_table tt( 1 << num_vars );
+    kitty::create_nth_var( tt, index );
+    return tt;
+  }
+
+  kitty::partial_truth_table compute_not( kitty::partial_truth_table const& value ) const
+  {
+    return ~value;
+  }
+
+private:
+  unsigned num_vars;
+};
+
 /*! \brief Simulates partial truth tables.
  *
  * This simulator simulates partial truth tables, whose length is flexible
@@ -746,6 +781,73 @@ void simulate_nodes( Ntk const& ntk, unordered_node_map<kitty::partial_truth_tab
       }
     } );
   }
+}
+
+/*! \brief Simulate a node
+ *
+ * **Required network functions:**
+ * - `foreach_fanin`
+ * - `get_node`
+ * - `compute<SimulationType>`
+ *
+ * \param ntk Network
+ * \param n A node in the network
+ * \param tts A map from nodes to values
+ * \param sim Simulator, which implements the simulator interface
+ */
+template<class FunctionTT, class Ntk, class Simulator>
+FunctionTT simulate_node( Ntk const& ntk, typename Ntk::node const& n, std::unordered_map<typename Ntk::node, FunctionTT>& tts, Simulator const& sim )
+{
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
+  static_assert( has_is_complemented_v<Ntk>, "Ntk does not implement the is_complemented method" );
+  static_assert( has_constant_value_v<Ntk>, "Ntk does not implement the constant_value method" );
+  static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
+  static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
+  static_assert( has_compute_v<Ntk, FunctionTT>, "Ntk does not implement the compute for FunctionTT" );
+
+  auto const it = tts.find( n );
+  if ( it != std::end( tts ) )
+  {
+    return it->second;
+  }
+
+  std::array<FunctionTT, Ntk::max_fanin_size> fi_tts;
+  uint32_t fi_index{0};
+  ntk.foreach_fanin( n, [&]( typename Ntk::signal const& fi ){
+    auto const fi_tt = simulate_node( ntk, ntk.get_node( fi ), tts, sim );
+    fi_tts[fi_index++] = fi_tt;
+  });
+
+  return tts[n] = ntk.template compute<FunctionTT>( n, std::cbegin( fi_tts ), std::cbegin( fi_tts ) + fi_index );
+}
+
+/*! \brief Simulate a function
+ *
+ * **Required network functions:**
+ * - `get_node`
+ * - `is_complemented`
+ * - `foreach_fanin`
+ * - `compute<SimulationType>`
+ *
+ * \param ntk Network
+ * \param n A node in the network
+ * \param tts A map from nodes to values
+ * \param sim Simulator, which implements the simulator interface
+ */
+template<class FunctionTT, class Ntk, class Simulator>
+FunctionTT simulate_function( Ntk const& ntk, typename Ntk::signal const& f, std::unordered_map<typename Ntk::node, FunctionTT>& tts, Simulator const& sim )
+{
+  static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
+  static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
+  static_assert( has_is_complemented_v<Ntk>, "Ntk does not implement the is_complemented method" );
+  static_assert( has_constant_value_v<Ntk>, "Ntk does not implement the constant_value method" );
+  static_assert( has_get_node_v<Ntk>, "Ntk does not implement the get_node method" );
+  static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
+  static_assert( has_compute_v<Ntk, FunctionTT>, "Ntk does not implement the compute for FunctionTT" );
+
+  auto const tt = simulate_node( ntk, ntk.get_node( f ), tts, sim );
+  return ntk.is_complemented( f ) ? sim.compute_not( tt ) : tt;
 }
 
 /*! \brief Simulates a network with a generic simulator.
