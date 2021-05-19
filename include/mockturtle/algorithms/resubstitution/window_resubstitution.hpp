@@ -67,6 +67,32 @@ struct window_resubstitution_stats
   window_manager_stats win_st;
 };
 
+template<class FunctionTT, class Ntk, class Simulator>
+FunctionTT simulate_node( Ntk const& ntk, typename Ntk::node const& n, std::unordered_map<typename Ntk::node, FunctionTT>& tts, Simulator const& sim )
+{
+  auto const it = tts.find( n );
+  if ( it != std::end( tts ) )
+  {
+    return it->second;
+  }
+
+  std::array<FunctionTT, Ntk::max_fanin_size> fi_tts;
+  uint32_t fi_index{0};
+  ntk.foreach_fanin( n, [&]( typename Ntk::signal const& fi ){
+    auto const fi_tt = simulate_node( ntk, ntk.get_node( fi ), tts, sim );
+    fi_tts[fi_index++] = fi_tt;
+  });
+
+  return tts[n] = ntk.template compute<FunctionTT>( n, std::cbegin( fi_tts ), std::cbegin( fi_tts ) + fi_index );
+}
+
+template<class FunctionTT, class Ntk, class Simulator>
+FunctionTT simulate_function( Ntk const& ntk, typename Ntk::signal const& f, std::unordered_map<typename Ntk::node, FunctionTT>& tts, Simulator const& sim )
+{
+  auto const tt = simulate_node( ntk, ntk.get_node( f ), tts, sim );
+  return ntk.is_complemented( f ) ? sim.compute_not( tt ) : tt;
+}
+
 namespace detail
 {
 
@@ -94,6 +120,12 @@ public:
     , ps( ps )
     , st( st )
   {
+    register_events();
+  }
+
+  ~window_resubstitution_impl()
+  {
+    release_events();
   }
 
   void run()
@@ -118,16 +150,40 @@ public:
       if ( Window win = construct_window( pivot ) )
       {
         resynthesize_window( pivot, win );
-
-        /* cleanup */
-        win.foreach_divisor( [&]( node const& n, uint32_t index ){
-          ntk.set_value( n, 0 );
-        });
       }
     }
   }
 
 private:
+  void register_events()
+  {
+    auto const update_level_of_new_node = [&]( const auto& n ) {
+      ntk.resize_levels();
+      update_node_level( n );
+    };
+
+    auto const update_level_of_existing_node = [&]( node const& n, const auto& old_children ) {
+      (void)old_children;
+      ntk.resize_levels();
+      update_node_level( n );
+    };
+
+    auto const update_level_of_deleted_node = [&]( const auto& n ) {
+      ntk.set_level( n, -1 );
+    };
+
+    add_event = ntk.events().register_add_event( update_level_of_new_node );
+    modified_event = ntk.events().register_modified_event( update_level_of_existing_node );
+    delete_event = ntk.events().register_delete_event( update_level_of_deleted_node );
+  }
+
+  void release_events()
+  {
+    ntk.events().release_add_event( add_event );
+    ntk.events().release_modified_event( modified_event );
+    ntk.events().release_delete_event( delete_event );
+  }
+
   Window construct_window( node const& pivot )
   {
     return wm.construct_window( pivot );
@@ -164,7 +220,37 @@ private:
     assert( outputs.size() == 1u );
     ntk.substitute_node( pivot, outputs[0u] );
 
+    verify( win, outputs[0u], target, care );
     return true;
+  }
+
+  bool verify( Window const& win, signal const& s, FunctionTT const& expected, FunctionTT const& care )
+  {
+    default_simulator<kitty::dynamic_truth_table> sim( win.num_leaves() );
+    std::unordered_map<node, FunctionTT> node_to_tts;
+    node_to_tts[0] = sim.compute_constant( false );
+    win.foreach_leaf( [&]( node const& leave, auto index ){
+      node_to_tts[leave] = sim.compute_pi( index );
+    } );
+
+    FunctionTT const resimulated = simulate_function( ntk, s, node_to_tts, sim );
+    if ( ( resimulated & care ) != ( expected & care ) )
+    {
+      fmt::print( "EXPECT: {}\n",
+                  fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_green ), "{}", kitty::to_hex( expected ) ) );
+      fmt::print( "RE-SIM: {}\n",
+                  fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_red ), "{}", kitty::to_hex( resimulated ) ) );
+    }
+    else
+    {
+      fmt::print( "EXPECT: {}\n",
+                  fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_green ), "{}", kitty::to_hex( expected ) ) );
+      fmt::print( "RE-SIM: {}\n",
+                  fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_green ), "{}", kitty::to_hex( resimulated ) ) );
+    }
+    assert( ( resimulated & care ) == ( expected & care ) );
+
+    return false;
   }
 
   void simulate_window( Window const& win )
@@ -206,6 +292,35 @@ private:
       //             fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_magenta ), "{:5}", n ),
       //             fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_blue ), "{}", kitty::to_hex( tts[index] ) ) );
     });
+  }
+
+  void update_node_level( node const& n, bool top_most = true )
+  {
+    uint32_t curr_level = ntk.level( n );
+
+    uint32_t max_level = 0;
+    ntk.foreach_fanin( n, [&]( const auto& f ) {
+      auto const p = ntk.get_node( f );
+      auto const fanin_level = ntk.level( p );
+      if ( fanin_level > max_level )
+      {
+        max_level = fanin_level;
+      }
+    } );
+    ++max_level;
+
+    if ( curr_level != max_level )
+    {
+      ntk.set_level( n, max_level );
+
+      /* update only one more level */
+      if ( top_most )
+      {
+        ntk.foreach_fanout( n, [&]( const auto& p ) {
+          update_node_level( p, false );
+        } );
+      }
+    }
   }
 
 private:
