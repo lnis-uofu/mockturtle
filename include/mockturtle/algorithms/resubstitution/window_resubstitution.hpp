@@ -48,7 +48,7 @@ namespace experimental
 struct window_resubstitution_ps
 {
   /*! \brief Show progress. */
-  bool progress{true};
+  bool progress{false};
 
   /*! \brief Be verbose. */
   bool verbose{true};
@@ -66,32 +66,6 @@ struct window_resubstitution_stats
   /*! \brief Statistics for windowing */
   window_manager_stats win_st;
 };
-
-template<class FunctionTT, class Ntk, class Simulator>
-FunctionTT simulate_node( Ntk const& ntk, typename Ntk::node const& n, std::unordered_map<typename Ntk::node, FunctionTT>& tts, Simulator const& sim )
-{
-  auto const it = tts.find( n );
-  if ( it != std::end( tts ) )
-  {
-    return it->second;
-  }
-
-  std::array<FunctionTT, Ntk::max_fanin_size> fi_tts;
-  uint32_t fi_index{0};
-  ntk.foreach_fanin( n, [&]( typename Ntk::signal const& fi ){
-    auto const fi_tt = simulate_node( ntk, ntk.get_node( fi ), tts, sim );
-    fi_tts[fi_index++] = fi_tt;
-  });
-
-  return tts[n] = ntk.template compute<FunctionTT>( n, std::cbegin( fi_tts ), std::cbegin( fi_tts ) + fi_index );
-}
-
-template<class FunctionTT, class Ntk, class Simulator>
-FunctionTT simulate_function( Ntk const& ntk, typename Ntk::signal const& f, std::unordered_map<typename Ntk::node, FunctionTT>& tts, Simulator const& sim )
-{
-  auto const tt = simulate_node( ntk, ntk.get_node( f ), tts, sim );
-  return ntk.is_complemented( f ) ? sim.compute_not( tt ) : tt;
-}
 
 namespace detail
 {
@@ -130,16 +104,13 @@ public:
 
   void run()
   {
-    fmt::print( "[i] window resubstitution\n" );
     stopwatch t( st.time_total );
 
     uint32_t const size = ntk.size();
-    fmt::print( "[i] network size = {}\n", size );
-
     progress_bar pbar{size, "resubstitution |{0}|", ps.progress};
     for ( uint32_t i = 0; i < size; ++i )
     {
-      // pbar( i, i );
+      pbar( i, i );
 
       node const pivot = ntk.index_to_node( i );
       if ( ntk.is_constant( pivot ) || ntk.is_pi( pivot ) || ntk.is_dead( pivot ) )
@@ -199,6 +170,7 @@ private:
 
     FunctionTT const target = tts[ntk.value( pivot )];
     FunctionTT const care = ~target.construct();
+    resyn_fn.set_upper_bound( win.mffc_size() );
     auto const index_list = resyn_fn( target, care, win.begin_nonff_nodes(), win.end_nonff_divisors(), tts,
                                       [&]( node const& n ){ return ntk.value( n ); } );
     if ( !index_list )
@@ -226,7 +198,7 @@ private:
 
   bool verify( Window const& win, signal const& s, FunctionTT const& expected, FunctionTT const& care )
   {
-    default_simulator<kitty::dynamic_truth_table> sim( win.num_leaves() );
+    default_simulator<FunctionTT> sim( win.num_leaves() );
     std::unordered_map<node, FunctionTT> node_to_tts;
     node_to_tts[0] = sim.compute_constant( false );
     win.foreach_leaf( [&]( node const& n, auto index ){

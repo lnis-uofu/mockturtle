@@ -186,6 +186,18 @@ public:
     return double( nodes_.size() - num_leaves_ ) / num_leaves_;
   }
 
+  /*! \brief Number of nodes */
+  uint32_t num_nodes() const noexcept
+  {
+    return nodes_.size();
+  }
+
+  /*! \brief Number of nodes */
+  uint32_t size() const noexcept
+  {
+    return nodes_.size();
+  }
+
   /*! Iterate over leaf nodes */
   template<class Fn>
   void foreach_leaf( Fn&& fn ) const noexcept

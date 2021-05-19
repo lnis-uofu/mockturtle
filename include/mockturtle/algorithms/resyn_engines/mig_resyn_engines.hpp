@@ -105,9 +105,9 @@ public:
     std::vector<std::tuple<Iterator,Iterator,bool,bool>> candidates;
     for ( auto x = begin; x != end; ++x )
     {
+      FunctionTT const& tt_x = tts[fn( *x )];
       for ( auto y = x + 1; y != end; ++y )
       {
-        FunctionTT const& tt_x = tts[fn( *x )];
         FunctionTT const& tt_y = tts[fn( *y )];
         if ( kitty::ternary_majority( tt_x, tt_y, target_ ) == target_ )
         {
@@ -230,6 +230,14 @@ public:
 
     return std::nullopt;
   }
+
+  void set_upper_bound( uint32_t bound ) const
+  {
+    upper_bound = bound;
+  }
+
+private:
+  mutable uint32_t upper_bound{std::numeric_limits<uint32_t>::max()};
 };
 
 struct mig_resyn_engine_params
