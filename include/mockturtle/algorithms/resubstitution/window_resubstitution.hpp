@@ -233,7 +233,7 @@ private:
   void simulate_window( Window const& win )
   {
     /* grow TTs if necessary if necessary*/
-    auto const num_divisors = win.num_nonff_divisors();
+    auto const num_divisors = win.size();
     if ( tts.size() < num_divisors )
     {
       tts.resize( num_divisors );
@@ -260,6 +260,7 @@ private:
         fi_tts[fi_index++] = ntk.is_constant( f ) ? kitty::create<FunctionTT>( win.num_leaves() ) : tts[ntk.value( f )];
       });
 
+      assert( index < tts.size() );
       tts[index] = ntk.template compute<FunctionTT>( n, std::cbegin( fi_tts ), std::cbegin( fi_tts ) + fi_index );
       ntk.set_value( n, index );
 
