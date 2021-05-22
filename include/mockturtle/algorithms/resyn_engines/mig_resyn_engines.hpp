@@ -39,6 +39,7 @@
 
 #include <vector>
 #include <unordered_map>
+#include <cstdarg>
 
 namespace mockturtle
 {
@@ -47,6 +48,24 @@ enum class mig_resyn_enum_strategy
 {
   eager,
   exhaustive,
+};
+
+struct mig_resyn_enum_params
+{
+  /* reserve memory for a fixed number of candidates */
+  uint32_t maj1_reserve_candidates{150};
+
+  /* never use more than the reserved candi dates */
+  bool maj1_reserve_candidates_strict{false};
+
+  /* use constants when you generate a single majority */
+  bool maj1_use_constants{true};
+
+  /* use constants when you generate two majorities */
+  bool maj2_use_constants{false};
+
+  /* maximum tries for different last fanin when constructing two majorities */
+  uint32_t maj2_max_candidates_for_last_fanin{300};
 };
 
 template<
@@ -63,7 +82,9 @@ public:
   using index_list_type = mig_index_list;
 
 public:
-  explicit mig_resyn_enum() = default;
+  explicit mig_resyn_enum( mig_resyn_enum_params const& ps = {} )
+    : ps( ps )
+  {}
 
   template<typename Iterator, typename TruthTables, class Fn>
   std::optional<index_list_type> operator()( FunctionTT const& target, FunctionTT const& care, Iterator begin, Iterator end, TruthTables const& tts, Fn&& fn ) const
@@ -102,7 +123,10 @@ public:
     }
 
     /* Boolean filtering */
-    std::vector<std::tuple<Iterator,Iterator,bool,bool>> candidates;
+    std::vector<std::tuple<std::optional<Iterator>,Iterator,bool,bool>> candidates;
+    candidates.reserve( ps.maj1_reserve_candidates );
+
+    FunctionTT const tt_const = target.construct();
     for ( auto x = begin; x != end; ++x )
     {
       FunctionTT const& tt_x = tts[fn( *x )];
@@ -129,26 +153,84 @@ public:
           // fmt::print( "<~{},~{},*> = T\n", *x, *y );
           candidates.emplace_back( x, y, true, true );
         }
+
+        if ( ps.maj1_reserve_candidates_strict && candidates.size() >= ps.maj1_reserve_candidates )
+        {
+          break;
+        }
+      }
+
+      /* constant */
+      if ( ps.maj1_use_constants )
+      {
+        if ( kitty::ternary_majority( tt_const, tt_x, target_ ) == target_ )
+        {
+          candidates.emplace_back( std::nullopt, x, false, false );
+        }
+        else if ( kitty::ternary_majority( tt_const, ~tt_x, target_ ) == target_ )
+        {
+          candidates.emplace_back( std::nullopt, x, false, true );
+        }
+        else if ( kitty::ternary_majority( ~tt_const, tt_x, target_ ) == target_ )
+        {
+          candidates.emplace_back( std::nullopt, x, true, false );
+        }
+        else if ( kitty::ternary_majority( ~tt_const, ~tt_x, target_ ) == target_ )
+        {
+          candidates.emplace_back( std::nullopt, x, true, true );
+        }
+      }
+
+      if ( ps.maj1_reserve_candidates_strict && candidates.size() >= ps.maj1_reserve_candidates )
+      {
+        break;
       }
     }
 
-    /* try a majority built from three divisors */
-    for ( auto const& [x,y,px,py] : candidates )
+    auto get_tt = [&]( std::optional<Iterator> const& x, bool px ){
+      if ( x )
+      {
+        return px ? ~tts[fn( **x )] : tts[fn( **x )];
+      }
+      else
+      {
+        return px ? ~tt_const : tt_const;
+      }
+    };
+
+    auto get_literal = [&]( std::optional<Iterator> const& x, bool px ) -> uint64_t
     {
-      FunctionTT const& tt_x = px ? ~tts[fn( *x )] : tts[fn( *x )];
+      if ( x )
+      {
+        return 2u*( fn( **x ) + 1 ) + px;
+      }
+      else
+      {
+        return uint64_t( px );
+      }
+    };
+
+    /* try a majority using three divisors */
+    for ( auto const& [xo,y,px,py] : candidates )
+    {
+      FunctionTT const& tt_x = get_tt( xo, px );
       FunctionTT const& tt_y = py ? ~tts[fn( *y )] : tts[fn( *y )];
+      uint64_t const& literal_x = get_literal( xo, px );
+      uint64_t const& literal_y = 2u*( fn( *y ) + 1 ) + py;
+
+      assert( yo );
       for ( auto z = y + 1; z != end; ++z )
       {
         FunctionTT const& tt_z = tts[fn( *z )];
         if ( ( kitty::ternary_majority( tt_x, tt_y, tt_z ) & care ) == target_ )
         {
-          auto m = index_list.add_maj( 2u*( fn( *x ) + 1 ) + px, 2u*( fn( *y ) + 1 ) + py, 2u*( fn( *z ) + 1 ) );
+          auto m = index_list.add_maj( literal_x, literal_y, 2u*( fn( *z ) + 1 ) );
           index_list.add_output( m );
           return index_list;
         }
         else if ( ( kitty::ternary_majority( tt_x, tt_y, ~tt_z ) & care ) == target_ )
         {
-          auto m = index_list.add_maj( 2u*( fn( *x ) + 1 ) + px, 2u*( fn( *y ) + 1 )+ py, 2u*( fn( *z ) + 1 ) + 1 );
+          auto m = index_list.add_maj( literal_x, literal_y, 2u*( fn( *z ) + 1 ) + 1 );
           index_list.add_output( m );
           return index_list;
         }
@@ -157,31 +239,37 @@ public:
 
     if constexpr ( ResynStrategy == mig_resyn_enum_strategy::eager )
     {
-      /* try two majorities built from five divisors */
+      /* try two majorities using five divisors */
       for ( auto a = std::begin( candidates ); a != std::end( candidates ); ++a )
       {
-        auto [x,y,px,py] = *a;
-        FunctionTT const& tt_x = px ? ~tts[fn( *x )] : tts[fn( *x )];
+        auto [xo,y,px,py] = *a;
+        FunctionTT const& tt_x = get_tt( xo, px );
         FunctionTT const& tt_y = py ? ~tts[fn( *y )] : tts[fn( *y )];
+        uint64_t const& literal_x = get_literal( xo, px );
+        uint64_t const& literal_y = 2u*( fn( *y ) + 1 ) + py;
+
         for ( auto b = a + 1; b != std::end( candidates ); ++b )
         {
-          auto [u,v,pu,pv] = *b;
-          FunctionTT const& tt_u = pu ? ~tts[fn( *u )] : tts[fn( *u )];
+          auto [uo,v,pu,pv] = *b;
+          FunctionTT const& tt_u = get_tt( uo, pu );
           FunctionTT const& tt_v = pv ? ~tts[fn( *v )] : tts[fn( *v )];
+          uint64_t const& literal_u = get_literal( uo, pu );
+          uint64_t const& literal_v = 2u*( fn( *v ) + 1 ) + pv;
+
           for ( auto w = v + 1; w != end; ++w )
           {
             FunctionTT const& tt_w = tts[fn( *w )];
             if ( ( kitty::ternary_majority( tt_x, tt_y, kitty::ternary_majority( tt_u, tt_v, tt_w ) ) & care ) == target_ )
             {
-              auto const m0 = index_list.add_maj( 2u*( fn( *u ) + 1 ) + pu, 2u*( fn( *v ) + 1 ) + pv, 2u*( fn( *w ) + 1 ) );
-              auto const m1 = index_list.add_maj( 2u*( fn( *x ) + 1 ) + px, 2u*( fn( *y ) + 1 ) + py, m0 );
+              auto const m0 = index_list.add_maj( literal_u, literal_v, 2u*( fn( *w ) + 1 ) );
+              auto const m1 = index_list.add_maj( literal_x, literal_y, m0 );
               index_list.add_output( m1 );
               return index_list;
             }
             else if ( ( kitty::ternary_majority( tt_x, tt_y, kitty::ternary_majority( tt_u, tt_v, ~tt_w ) ) & care ) == target_ )
             {
-              auto const m0 = index_list.add_maj( 2u*( fn( *u ) + 1 ) + pu, 2u*( fn( *v ) + 1 ) + pv, 2u*( fn( *w ) + 1 ) + 1 );
-              auto const m1 = index_list.add_maj( 2u*( fn( *x ) + 1 ) + px, 2u*( fn( *y ) + 1 ) + py, m0 );
+              auto const m0 = index_list.add_maj( literal_u, literal_v, 2u*( fn( *w ) + 1 ) + 1 );
+              auto const m1 = index_list.add_maj( literal_x, literal_y, m0 );
               index_list.add_output( m1 );
               return index_list;
             }
@@ -192,11 +280,16 @@ public:
 
     if constexpr ( ResynStrategy == mig_resyn_enum_strategy::exhaustive )
     {
-      /* try two majorities built from five divisors */
-      for ( auto const& [x,y,px,py] : candidates )
+      /* try two majorities using five divisors */
+      for ( auto const& [xo,y,px,py] : candidates )
       {
-        FunctionTT const& tt_x = px ? ~tts[fn( *x )] : tts[fn( *x )];
+        uint32_t count{0};
+
+        FunctionTT const& tt_x = get_tt( xo, px );
         FunctionTT const& tt_y = py ? ~tts[fn( *y )] : tts[fn( *y )];
+        uint64_t const& literal_x = get_literal( xo, px );
+        uint64_t const& literal_y = 2u*( fn( *y ) + 1 ) + py;
+
         for ( auto u = begin; u != end; ++u )
         {
           FunctionTT const& tt_u = tts[fn( *u )];
@@ -205,6 +298,11 @@ public:
             FunctionTT const& tt_v = tts[fn( *v )];
             for ( auto w = v + 1; w != end; ++w )
             {
+              if ( count++ > ps.maj2_max_candidates_for_last_fanin )
+              {
+                break;
+              }
+
               FunctionTT const& tt_w = tts[fn( *w )];
               for ( auto const& polarities : { 0, 1, 2, 4, 8, 9, 10, 12 } )
               {
@@ -217,7 +315,27 @@ public:
                 if ( ( kitty::ternary_majority( tt_x, tt_y, pm ? ~tt_m : tt_m ) & care ) == target_ )
                 {
                   auto const m0 = index_list.add_maj( 2u*( fn( *u ) + 1 ) + pu, 2u*( fn( *v ) + 1 ) + pv, 2u*( fn( *w ) + 1 ) + pw );
-                  auto const m1 = index_list.add_maj( 2u*( fn( *x ) + 1 ) + px, 2u*( fn( *y ) + 1 ) + py, m0 + pm );
+                  auto const m1 = index_list.add_maj( literal_x, literal_y, m0 + pm );
+                  index_list.add_output( m1 );
+                  return index_list;
+                }
+              }
+            }
+
+            if ( ps.maj2_use_constants )
+            {
+              for ( auto const& polarities : { 0, 1, 2, 4, 8, 9, 10, 12 } )
+              {
+                bool const pu = polarities & 0x1;
+                bool const pv = polarities & 0x2;
+                bool const pw = polarities & 0x4;
+                bool const pm = polarities & 0x8;
+
+                FunctionTT const tt_m = kitty::ternary_majority( pu ? ~tt_u : tt_u, pv ? ~tt_v : tt_v, pw ? ~tt_const : tt_const );
+                if ( ( kitty::ternary_majority( tt_x, tt_y, pm ? ~tt_m : tt_m ) & care ) == target_ )
+                {
+                  auto const m0 = index_list.add_maj( 2u*( fn( *u ) + 1 ) + pu, 2u*( fn( *v ) + 1 ) + pv, uint64_t( pw ) );
+                  auto const m1 = index_list.add_maj( literal_x, literal_y, m0 + pm );
                   index_list.add_output( m1 );
                   return index_list;
                 }
@@ -237,6 +355,7 @@ public:
   }
 
 private:
+  mig_resyn_enum_params const ps;
   mutable uint32_t upper_bound{std::numeric_limits<uint32_t>::max()};
 };
 

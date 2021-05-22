@@ -224,11 +224,10 @@ TEST_CASE( "Test quality improvement of MIG window resubstitution using mig_resy
     fanout_view fntk{dntk};
     experimental::window_resubstitution( fntk, resyn );
     ntk = cleanup_dangling( ntk );
-    std::cout << before << ' ' << ntk.num_gates() << std::endl;
     return before - ntk.num_gates();
   } );
 
-  CHECK( v == std::vector<uint32_t>{{1, 59, 3, 16, 3, 25, 107, 108, 183, 438, 74}} );
+  CHECK( v == std::vector<uint32_t>{{1, 58, 6, 16, 6, 24,  91, 69, 135,  34, 74}} );
 }
 
 TEST_CASE( "Test quality improvement of MIG window resubstitution using mig_resyn_enum<exhaustive>", "[quality]" )
@@ -243,7 +242,7 @@ TEST_CASE( "Test quality improvement of MIG window resubstitution using mig_resy
     return before - ntk.num_gates();
   } );
 
-  CHECK( v == std::vector<uint32_t>{{1, 59, 3, 16, 3, 25, 107, 108, 183, 438, 74}} );
+  CHECK( v == std::vector<uint32_t>{{1, 59, 6, 21, 6, 26, 113, 94, 168, 394, 82}} );
 }
 
 TEST_CASE( "Test quality improvement of MIG window resubstitution using mig_resyn", "[quality]" )
