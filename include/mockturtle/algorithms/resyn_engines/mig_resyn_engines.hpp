@@ -37,6 +37,7 @@
 #include <kitty/kitty.hpp>
 #include <fmt/format.h>
 
+#include <array>
 #include <vector>
 #include <unordered_map>
 #include <cstdarg>
@@ -70,7 +71,10 @@ struct mig_resyn_enum_params
 
 template<
   class FunctionTT = kitty::dynamic_truth_table,
-  mig_resyn_enum_strategy ResynStrategy = mig_resyn_enum_strategy::eager
+  mig_resyn_enum_strategy ResynStrategy = mig_resyn_enum_strategy::eager,
+  uint32_t limit_maj1_candidates = 500,
+  uint32_t limit_maj2_candidates = 500,
+  uint32_t limit_next_candidates = 500
 >
 class mig_resyn_enum
 {
@@ -81,267 +85,416 @@ public:
   /* index-list */
   using index_list_type = mig_index_list;
 
+  struct maj1_candidate
+  {
+    struct
+    {
+      uint32_t x         : 31;
+      uint32_t compl_x   :  1;
+      uint32_t y         : 30;
+      uint32_t compl_y   :  1;
+      uint32_t is_const0 :  1;
+    } bits;
+  };
+
+  struct maj2_candidate
+  {
+    struct
+    {
+      uint32_t x           : 30;
+      uint32_t compl_x     :  1;
+      uint32_t const1_x    :  1;
+      uint32_t y           : 30;
+      uint32_t compl_y     :  1;
+      uint32_t const1_y    :  1;
+      uint32_t z           : 30;
+      uint32_t compl_z     :  1;
+      uint32_t const1_z    :  1;
+    } bits;
+  };
+
+  struct next_candidate
+  {
+    struct
+    {
+      uint32_t x         : 31;
+      uint32_t is_const1 : 1;
+    } bits;
+
+    bool operator==( uint32_t value ) const
+    {
+      return !bits.is_const1 && bits.x == value;
+    }
+  };
+
 public:
   explicit mig_resyn_enum( mig_resyn_enum_params const& ps = {} )
     : ps( ps )
   {}
 
-  template<typename Iterator, typename TruthTables, class Fn>
-  std::optional<index_list_type> operator()( FunctionTT const& target, FunctionTT const& care, Iterator begin, Iterator end, TruthTables const& tts, Fn&& fn ) const
+  template<class Fn>
+  std::optional<index_list_type> operator()( FunctionTT const& target, FunctionTT const& care, uint32_t begin, uint32_t end,
+                                             uint32_t num_leaves, std::vector<FunctionTT> const& tts, Fn&& fn ) const
   {
     index_list_type index_list;
-    uint32_t const num_divisors = std::distance( begin, end );
+    assert( begin <= end );
+
+    uint32_t const num_divisors = end - begin + 1;
     index_list.add_inputs( num_divisors );
 
     FunctionTT const target_ = target & care;
 
-    /* try constant */
+    /* try a constant */
     if ( kitty::is_const0( target_ ) )
     {
       index_list.add_output( 0 );
       return index_list;
     }
-    else if ( kitty::is_const0( ~( target_ ) ) )
+    else if ( kitty::is_const0( ~target_ ) )
     {
       index_list.add_output( 1 );
       return index_list;
     }
 
     /* try a single divisor */
-    for ( auto it = begin; it != end; ++it )
+    for ( auto i = begin; i != end; ++i )
     {
-      if ( target_ == ( tts[fn( *it )] & care ) )
+      if ( target_ == ( tts.at( i ) & care ) )
       {
-        index_list.add_output( 2u*( fn( *it ) + 1 ) );
+        index_list.add_output( ( ( i ) + 1 ) << 1 );
         return index_list;
       }
-      else if ( ~( target_ ) == ( tts[fn( *it )] & care ) )
+      else if ( target_ == ( tts.at( i ) & care ) )
       {
-        index_list.add_output( 2u*( fn( *it ) + 1 ) + 1u );
+        index_list.add_output( ( ( i ) + 1 ) << 1 + 1 );
         return index_list;
       }
     }
 
-    /* Boolean filtering */
-    std::vector<std::tuple<std::optional<Iterator>,Iterator,bool,bool>> candidates;
-    candidates.reserve( ps.maj1_reserve_candidates );
-
-    FunctionTT const tt_const = target.construct();
-    for ( auto x = begin; x != end; ++x )
+    if ( upper_bound <= 1 )
     {
-      FunctionTT const& tt_x = tts[fn( *x )];
-      for ( auto y = x + 1; y != end; ++y )
-      {
-        FunctionTT const& tt_y = tts[fn( *y )];
-        if ( kitty::ternary_majority( tt_x, tt_y, target_ ) == target_ )
-        {
-          // fmt::print( "<{},{},*> = T\n", *x, *y );
-          candidates.emplace_back( x, y, false, false );
-        }
-        else if ( ( kitty::ternary_majority( ~tt_x, tt_y, target ) & care ) == target_ )
-        {
-          // fmt::print( "<~{},{},*> = T\n", *x, *y );
-          candidates.emplace_back( x, y, true, false );
-        }
-        else if ( ( kitty::ternary_majority( tt_x, ~tt_y, target ) & care ) == target_ )
-        {
-          // fmt::print( "<{},~{},*> = T\n", *x, *y );
-          candidates.emplace_back( x, y, false, true );
-        }
-        else if ( ( kitty::ternary_majority( ~tt_x, ~tt_y, target ) & care ) == target_ )
-        {
-          // fmt::print( "<~{},~{},*> = T\n", *x, *y );
-          candidates.emplace_back( x, y, true, true );
-        }
+      return std::nullopt;
+    }
 
-        if ( ps.maj1_reserve_candidates_strict && candidates.size() >= ps.maj1_reserve_candidates )
+    max_maj1_candidates = 0;
+    max_maj2_candidates = 0;
+    max_next_candidates = 0;
+
+    FunctionTT const tt_zero = target.construct();
+    for ( auto x = begin; x < end && max_maj1_candidates < limit_maj1_candidates; ++x )
+    {
+      FunctionTT const& tt_x = tts.at( x );
+      for ( auto y = x + 1; y < end && max_maj1_candidates < limit_maj1_candidates; ++y )
+      {
+        FunctionTT const& tt_y = tts.at( y );
+        if ( ( kitty::ternary_majority( tt_x, tt_y, target_ ) & care ) == target_ )
         {
-          break;
+          auto& cand = maj1_candidates[max_maj1_candidates++];
+          cand.bits.x = x;
+          cand.bits.compl_x = false;
+          cand.bits.y = y;
+          cand.bits.compl_y = false;
+          cand.bits.is_const0 = false;
+        }
+        else if ( ( kitty::ternary_majority( ~tt_x, tt_y, target_ ) & care ) == target_ )
+        {
+          auto& cand = maj1_candidates[max_maj1_candidates++];
+          cand.bits.x = x;
+          cand.bits.compl_x = true;
+          cand.bits.y = y;
+          cand.bits.compl_y = false;
+          cand.bits.is_const0 = false;
+        }
+        else if ( ( kitty::ternary_majority( tt_x, ~tt_y, target_ ) & care ) == target_ )
+        {
+          auto& cand = maj1_candidates[max_maj1_candidates++];
+          cand.bits.x = x;
+          cand.bits.compl_x = false;
+          cand.bits.y = y;
+          cand.bits.compl_y = true;
+          cand.bits.is_const0 = false;
+        }
+        else if ( max_next_candidates < limit_next_candidates )
+        {
+          if ( std::find( std::begin( next_candidates ), std::begin( next_candidates ) + max_next_candidates, y ) ==
+               std::begin( next_candidates ) + max_next_candidates )
+          {
+            auto& cand = next_candidates[max_next_candidates++];
+            cand.bits.x = y;
+            cand.bits.is_const1 = false;
+          }
         }
       }
 
-      /* constant */
-      if ( ps.maj1_use_constants )
+      if ( ( kitty::ternary_majority( tt_x, ~tt_zero, target_ ) & care ) == target_ )
       {
-        if ( kitty::ternary_majority( tt_const, tt_x, target_ ) == target_ )
-        {
-          candidates.emplace_back( std::nullopt, x, false, false );
-        }
-        else if ( kitty::ternary_majority( tt_const, ~tt_x, target_ ) == target_ )
-        {
-          candidates.emplace_back( std::nullopt, x, false, true );
-        }
-        else if ( kitty::ternary_majority( ~tt_const, tt_x, target_ ) == target_ )
-        {
-          candidates.emplace_back( std::nullopt, x, true, false );
-        }
-        else if ( kitty::ternary_majority( ~tt_const, ~tt_x, target_ ) == target_ )
-        {
-          candidates.emplace_back( std::nullopt, x, true, true );
-        }
+        auto& cand = maj1_candidates[max_maj1_candidates++];
+        cand.bits.x = x;
+        cand.bits.compl_x = false;
+        cand.bits.y = 0;
+        cand.bits.compl_y = true;
+        cand.bits.is_const0 = true;
       }
-
-      if ( ps.maj1_reserve_candidates_strict && candidates.size() >= ps.maj1_reserve_candidates )
+      else if ( ( kitty::ternary_majority( ~tt_x, ~tt_zero, target_ ) & care ) == target_ )
       {
-        break;
+        auto& cand = maj1_candidates[max_maj1_candidates++];
+        cand.bits.x = x;
+        cand.bits.compl_x = true;
+        cand.bits.y = 0;
+        cand.bits.compl_y = true;
+        cand.bits.is_const0 = true;
+      }
+      else if ( ( kitty::ternary_majority( tt_x, tt_zero, target_ ) & care ) == target_ )
+      {
+        auto& cand = maj1_candidates[max_maj1_candidates++];
+        cand.bits.x = x;
+        cand.bits.compl_x = false;
+        cand.bits.y = 0;
+        cand.bits.compl_y = false;
+        cand.bits.is_const0 = true;
+      }
+      else if ( max_next_candidates < limit_next_candidates )
+      {
+        if ( std::find( std::begin( next_candidates ), std::begin( next_candidates ) + max_next_candidates, x ) ==
+             std::begin( next_candidates ) + max_next_candidates )
+        {
+          auto& cand = next_candidates[max_next_candidates++];
+          cand.bits.x = x;
+          cand.bits.is_const1 = false;
+        }
       }
     }
 
-    auto get_tt = [&]( std::optional<Iterator> const& x, bool px ){
-      if ( x )
-      {
-        return px ? ~tts[fn( **x )] : tts[fn( **x )];
-      }
-      else
-      {
-        return px ? ~tt_const : tt_const;
-      }
-    };
-
-    auto get_literal = [&]( std::optional<Iterator> const& x, bool px ) -> uint64_t
+    if ( max_next_candidates < limit_next_candidates )
     {
-      if ( x )
-      {
-        return 2u*( fn( **x ) + 1 ) + px;
-      }
-      else
-      {
-        return uint64_t( px );
-      }
-    };
+      auto& cand = next_candidates[max_next_candidates++];
+      cand.bits.x = 0;
+      cand.bits.is_const1 = true;
+    }
 
-    /* try a majority using three divisors */
-    for ( auto const& [xo,y,px,py] : candidates )
+    for ( auto i = 0; i < max_maj1_candidates; ++i )
     {
-      FunctionTT const& tt_x = get_tt( xo, px );
-      FunctionTT const& tt_y = py ? ~tts[fn( *y )] : tts[fn( *y )];
-      uint64_t const& literal_x = get_literal( xo, px );
-      uint64_t const& literal_y = 2u*( fn( *y ) + 1 ) + py;
+      auto const& cand1 = maj1_candidates.at( i );
+      FunctionTT const& tt_x = cand1.bits.compl_x ? ~tts.at( cand1.bits.x ) : tts.at( cand1.bits.x );
 
-      assert( yo );
-      for ( auto z = y + 1; z != end; ++z )
+      FunctionTT tt_y{cand1.bits.compl_y ? ~tts.at( cand1.bits.y ) : tts.at( cand1.bits.y )};
+      if ( cand1.bits.is_const0 )
       {
-        FunctionTT const& tt_z = tts[fn( *z )];
+        tt_y = cand1.bits.compl_y ? ~tt_zero : tt_zero;
+      }
+
+      for ( auto j = i + 1; j < max_maj1_candidates; ++j )
+      {
+        auto const& cand2 = maj1_candidates.at( j );
+        FunctionTT tt_z = cand2.bits.compl_x ? ~tts.at( cand2.bits.x ) : tts.at( cand2.bits.x );
+
         if ( ( kitty::ternary_majority( tt_x, tt_y, tt_z ) & care ) == target_ )
         {
-          auto m = index_list.add_maj( literal_x, literal_y, 2u*( fn( *z ) + 1 ) );
+          uint32_t const lit_x = ( ( 1 + cand1.bits.x ) << 1 ) + cand1.bits.compl_x;
+          uint32_t const lit_y = cand1.bits.is_const0 ? cand1.bits.compl_y : ( ( 1 + cand1.bits.y ) << 1 ) + cand1.bits.compl_y;
+          uint32_t const lit_z = ( ( 1 + cand2.bits.x ) << 1 ) + cand2.bits.compl_x;
+
+          auto const m = index_list.add_maj( lit_x, lit_y, lit_z );
           index_list.add_output( m );
           return index_list;
         }
-        else if ( ( kitty::ternary_majority( tt_x, tt_y, ~tt_z ) & care ) == target_ )
+
+        if ( cand2.bits.is_const0 )
         {
-          auto m = index_list.add_maj( literal_x, literal_y, 2u*( fn( *z ) + 1 ) + 1 );
+          tt_z = cand2.bits.compl_y ? ~tt_zero : tt_zero;
+        }
+        else
+        {
+          tt_z = cand2.bits.compl_y ? ~tts.at( cand2.bits.y ) : tts.at( cand2.bits.y );
+        }
+
+        if ( ( kitty::ternary_majority( tt_x, tt_y, tt_z ) & care ) == target_ )
+        {
+          uint32_t const lit_x = ( ( 1 + cand1.bits.x ) << 1 ) + cand1.bits.compl_x;
+          uint32_t const lit_y = cand1.bits.is_const0 ? cand1.bits.compl_y : ( ( 1 + cand1.bits.y ) << 1 ) + cand1.bits.compl_y;
+          uint32_t const lit_z = cand2.bits.is_const0 ? cand2.bits.compl_y : ( ( 1 + cand2.bits.y ) << 1 ) + cand2.bits.compl_y;
+
+          auto const m = index_list.add_maj( lit_x, lit_y, lit_z );
           index_list.add_output( m );
           return index_list;
         }
       }
     }
 
-    if constexpr ( ResynStrategy == mig_resyn_enum_strategy::eager )
+    if ( upper_bound <= 2 )
     {
-      /* try two majorities using five divisors */
-      for ( auto a = std::begin( candidates ); a != std::end( candidates ); ++a )
+      return std::nullopt;
+    }
+
+    for ( auto i = 0u; i < max_next_candidates && max_maj2_candidates < limit_maj2_candidates; ++i )
+    {
+      auto const& x = next_candidates.at( i );
+      assert( x.bits.x < tts.size() );
+      FunctionTT const& tt_x = x.bits.is_const1 ? ~tt_zero : tts.at( x.bits.x );
+
+      for ( auto j = i + 1; j < max_next_candidates && max_maj2_candidates < limit_maj2_candidates; ++j )
       {
-        auto [xo,y,px,py] = *a;
-        FunctionTT const& tt_x = get_tt( xo, px );
-        FunctionTT const& tt_y = py ? ~tts[fn( *y )] : tts[fn( *y )];
-        uint64_t const& literal_x = get_literal( xo, px );
-        uint64_t const& literal_y = 2u*( fn( *y ) + 1 ) + py;
+        auto const& y = next_candidates.at( j );
+        assert( y.bits.x < tts.size() );
+        FunctionTT const& tt_y = y.bits.is_const1 ? ~tt_zero : tts.at( y.bits.x );
 
-        for ( auto b = a + 1; b != std::end( candidates ); ++b )
+        for ( auto k = j + 1; k < max_next_candidates && max_maj2_candidates < limit_maj2_candidates; ++k )
         {
-          auto [uo,v,pu,pv] = *b;
-          FunctionTT const& tt_u = get_tt( uo, pu );
-          FunctionTT const& tt_v = pv ? ~tts[fn( *v )] : tts[fn( *v )];
-          uint64_t const& literal_u = get_literal( uo, pu );
-          uint64_t const& literal_v = 2u*( fn( *v ) + 1 ) + pv;
+          auto const& z = next_candidates.at( k );
+          assert( z.bits.x < tts.size() );
+          FunctionTT const& tt_z = z.bits.is_const1 ? ~tt_zero : tts.at( z.bits.x );
 
-          for ( auto w = v + 1; w != end; ++w )
+          if ( kitty::implies( kitty::ternary_majority( tt_x, tt_y, tt_z ) & care, target_ ) )
           {
-            FunctionTT const& tt_w = tts[fn( *w )];
-            if ( ( kitty::ternary_majority( tt_x, tt_y, kitty::ternary_majority( tt_u, tt_v, tt_w ) ) & care ) == target_ )
-            {
-              auto const m0 = index_list.add_maj( literal_u, literal_v, 2u*( fn( *w ) + 1 ) );
-              auto const m1 = index_list.add_maj( literal_x, literal_y, m0 );
-              index_list.add_output( m1 );
-              return index_list;
-            }
-            else if ( ( kitty::ternary_majority( tt_x, tt_y, kitty::ternary_majority( tt_u, tt_v, ~tt_w ) ) & care ) == target_ )
-            {
-              auto const m0 = index_list.add_maj( literal_u, literal_v, 2u*( fn( *w ) + 1 ) + 1 );
-              auto const m1 = index_list.add_maj( literal_x, literal_y, m0 );
-              index_list.add_output( m1 );
-              return index_list;
-            }
+            auto& cand = maj2_candidates[max_maj2_candidates++];
+            cand.bits.const1_x = x.bits.is_const1;
+            cand.bits.compl_x = false;
+            cand.bits.x = x.bits.x;
+            cand.bits.const1_y = y.bits.is_const1;
+            cand.bits.compl_y = false;
+            cand.bits.y = y.bits.x;
+            cand.bits.const1_z = z.bits.is_const1;
+            cand.bits.compl_z = false;
+            cand.bits.z = z.bits.x;
+          }
+          else if ( kitty::implies( kitty::ternary_majority( ~tt_x, tt_y, tt_z ) & care, target_ ) )
+          {
+            auto& cand = maj2_candidates[max_maj2_candidates++];
+            cand.bits.const1_x = x.bits.is_const1;
+            cand.bits.compl_x = true;
+            cand.bits.x = x.bits.x;
+            cand.bits.const1_y = y.bits.is_const1;
+            cand.bits.compl_y = false;
+            cand.bits.y = y.bits.x;
+            cand.bits.const1_z = z.bits.is_const1;
+            cand.bits.compl_z = false;
+            cand.bits.z = z.bits.x;
+          }
+          else if ( kitty::implies( kitty::ternary_majority( tt_x, ~tt_y, tt_z ) & care, target_ ) )
+          {
+            auto& cand = maj2_candidates[max_maj2_candidates++];
+            cand.bits.const1_x = x.bits.is_const1;
+            cand.bits.compl_x = false;
+            cand.bits.x = x.bits.x;
+            cand.bits.const1_y = y.bits.is_const1;
+            cand.bits.compl_y = true;
+            cand.bits.y = y.bits.x;
+            cand.bits.const1_z = z.bits.is_const1;
+            cand.bits.compl_z = false;
+            cand.bits.z = z.bits.x;
+          }
+          else if ( kitty::implies( kitty::ternary_majority( tt_x, tt_y, ~tt_z ) & care, target_ ) )
+          {
+            auto& cand = maj2_candidates[max_maj2_candidates++];
+            cand.bits.const1_x = x.bits.is_const1;
+            cand.bits.compl_x = false;
+            cand.bits.x = x.bits.x;
+            cand.bits.const1_y = y.bits.is_const1;
+            cand.bits.compl_y = false;
+            cand.bits.y = y.bits.x;
+            cand.bits.const1_z = z.bits.is_const1;
+            cand.bits.compl_z = true;
+            cand.bits.z = z.bits.x;
+          }
+          else if ( kitty::implies( kitty::ternary_majority( ~tt_x, ~tt_y, tt_z ) & care, target_ ) )
+          {
+            auto& cand = maj2_candidates[max_maj2_candidates++];
+            cand.bits.const1_x = x.bits.is_const1;
+            cand.bits.compl_x = true;
+            cand.bits.x = x.bits.x;
+            cand.bits.const1_y = y.bits.is_const1;
+            cand.bits.compl_y = true;
+            cand.bits.y = y.bits.x;
+            cand.bits.const1_z = z.bits.is_const1;
+            cand.bits.compl_z = false;
+            cand.bits.z = z.bits.x;
+          }
+          else if ( kitty::implies( kitty::ternary_majority( tt_x, ~tt_y, ~tt_z ) & care, target_ ) )
+          {
+            auto& cand = maj2_candidates[max_maj2_candidates++];
+            cand.bits.const1_x = x.bits.is_const1;
+            cand.bits.compl_x = false;
+            cand.bits.x = x.bits.x;
+            cand.bits.const1_y = y.bits.is_const1;
+            cand.bits.compl_y = true;
+            cand.bits.y = y.bits.x;
+            cand.bits.const1_z = z.bits.is_const1;
+            cand.bits.compl_z = true;
+            cand.bits.z = z.bits.x;
+          }
+          else if ( kitty::implies( kitty::ternary_majority( ~tt_x, tt_y, ~tt_z ) & care, target_ ) )
+          {
+            auto& cand = maj2_candidates[max_maj2_candidates++];
+            cand.bits.const1_x = x.bits.is_const1;
+            cand.bits.compl_x = true;
+            cand.bits.x = x.bits.x;
+            cand.bits.const1_y = y.bits.is_const1;
+            cand.bits.compl_y = false;
+            cand.bits.y = y.bits.x;
+            cand.bits.const1_z = z.bits.is_const1;
+            cand.bits.compl_z = true;
+            cand.bits.z = z.bits.x;
+          }
+          else if ( kitty::implies( kitty::ternary_majority( ~tt_x, ~tt_y, ~tt_z ) & care, target_ ) )
+          {
+            auto& cand = maj2_candidates[max_maj2_candidates++];
+            cand.bits.const1_x = x.bits.is_const1;
+            cand.bits.compl_x = true;
+            cand.bits.x = x.bits.x;
+            cand.bits.const1_y = y.bits.is_const1;
+            cand.bits.compl_y = true;
+            cand.bits.y = y.bits.x;
+            cand.bits.const1_z = z.bits.is_const1;
+            cand.bits.compl_z = true;
+            cand.bits.z = z.bits.x;
           }
         }
       }
     }
 
-    if constexpr ( ResynStrategy == mig_resyn_enum_strategy::exhaustive )
+    for ( auto i = 0; i < max_maj1_candidates; ++i )
     {
-      /* try two majorities using five divisors */
-      for ( auto const& [xo,y,px,py] : candidates )
+      auto const& cand1 = maj1_candidates.at( i );
+      FunctionTT const& tt_x = cand1.bits.compl_x ? ~tts.at( cand1.bits.x ) : tts.at( cand1.bits.x );
+      FunctionTT tt_y{cand1.bits.compl_y ? ~tts.at( cand1.bits.y ) : tts.at( cand1.bits.y )};
+      if ( cand1.bits.is_const0 )
       {
-        uint32_t count{0};
+        tt_y = cand1.bits.compl_y ? ~tt_zero : tt_zero;
+      }
 
-        FunctionTT const& tt_x = get_tt( xo, px );
-        FunctionTT const& tt_y = py ? ~tts[fn( *y )] : tts[fn( *y )];
-        uint64_t const& literal_x = get_literal( xo, px );
-        uint64_t const& literal_y = 2u*( fn( *y ) + 1 ) + py;
-
-        for ( auto u = begin; u != end; ++u )
+      for ( auto j = 0; j < max_maj2_candidates; ++j )
+      {
+        auto const& cand2 = maj2_candidates.at( j );
+        FunctionTT tt_u{cand2.bits.compl_x ? ~tts.at( cand2.bits.x ) : tts.at( cand2.bits.x )};
+        if ( cand2.bits.const1_x )
         {
-          FunctionTT const& tt_u = tts[fn( *u )];
-          for ( auto v = u + 1; v != end; ++v )
-          {
-            FunctionTT const& tt_v = tts[fn( *v )];
-            for ( auto w = v + 1; w != end; ++w )
-            {
-              if ( count++ > ps.maj2_max_candidates_for_last_fanin )
-              {
-                break;
-              }
+          tt_u = cand2.bits.compl_x ? tt_zero : ~tt_zero;
+        }
 
-              FunctionTT const& tt_w = tts[fn( *w )];
-              for ( auto const& polarities : { 0, 1, 2, 4, 8, 9, 10, 12 } )
-              {
-                bool const pu = polarities & 0x1;
-                bool const pv = polarities & 0x2;
-                bool const pw = polarities & 0x4;
-                bool const pm = polarities & 0x8;
+        FunctionTT tt_v{cand2.bits.compl_y ? ~tts.at( cand2.bits.y ) : tts.at( cand2.bits.y )};
+        if ( cand2.bits.const1_y )
+        {
+          tt_v = cand2.bits.compl_y ? tt_zero : ~tt_zero;
+        }
 
-                FunctionTT const tt_m = kitty::ternary_majority( pu ? ~tt_u : tt_u, pv ? ~tt_v : tt_v, pw ? ~tt_w : tt_w );
-                if ( ( kitty::ternary_majority( tt_x, tt_y, pm ? ~tt_m : tt_m ) & care ) == target_ )
-                {
-                  auto const m0 = index_list.add_maj( 2u*( fn( *u ) + 1 ) + pu, 2u*( fn( *v ) + 1 ) + pv, 2u*( fn( *w ) + 1 ) + pw );
-                  auto const m1 = index_list.add_maj( literal_x, literal_y, m0 + pm );
-                  index_list.add_output( m1 );
-                  return index_list;
-                }
-              }
-            }
+        FunctionTT tt_w{cand2.bits.compl_z ? ~tts.at( cand2.bits.z ) : tts.at( cand2.bits.z )};
+        if ( cand2.bits.const1_z )
+        {
+          tt_w = cand2.bits.compl_z ? tt_zero : ~tt_zero;
+        }
 
-            if ( ps.maj2_use_constants )
-            {
-              for ( auto const& polarities : { 0, 1, 2, 4, 8, 9, 10, 12 } )
-              {
-                bool const pu = polarities & 0x1;
-                bool const pv = polarities & 0x2;
-                bool const pw = polarities & 0x4;
-                bool const pm = polarities & 0x8;
+        if ( ( kitty::ternary_majority( tt_x, tt_y, kitty::ternary_majority( tt_u, tt_v, tt_w ) ) & care )== target_ )
+        {
+          uint32_t const lit_x = ( ( 1 + cand1.bits.x ) << 1 ) + cand1.bits.compl_x;
+          uint32_t const lit_y = cand1.bits.is_const0 ? cand1.bits.compl_y : ( ( 1 + cand1.bits.y ) << 1 ) + cand1.bits.compl_y;
+          uint32_t const lit_u = cand2.bits.const1_x ? ( 1 - cand2.bits.compl_x ) : ( ( 1 + cand2.bits.x ) << 1 ) + cand2.bits.compl_x;
+          uint32_t const lit_v = cand2.bits.const1_y ? ( 1 - cand2.bits.compl_y ) : ( ( 1 + cand2.bits.y ) << 1 ) + cand2.bits.compl_y;
+          uint32_t const lit_w = cand2.bits.const1_z ? ( 1 - cand2.bits.compl_z ) : ( ( 1 + cand2.bits.z ) << 1 ) + cand2.bits.compl_z;
 
-                FunctionTT const tt_m = kitty::ternary_majority( pu ? ~tt_u : tt_u, pv ? ~tt_v : tt_v, pw ? ~tt_const : tt_const );
-                if ( ( kitty::ternary_majority( tt_x, tt_y, pm ? ~tt_m : tt_m ) & care ) == target_ )
-                {
-                  auto const m0 = index_list.add_maj( 2u*( fn( *u ) + 1 ) + pu, 2u*( fn( *v ) + 1 ) + pv, uint64_t( pw ) );
-                  auto const m1 = index_list.add_maj( literal_x, literal_y, m0 + pm );
-                  index_list.add_output( m1 );
-                  return index_list;
-                }
-              }
-            }
-          }
+          auto const m0 = index_list.add_maj( lit_u, lit_v, lit_w );
+          auto const m1 = index_list.add_maj( lit_x, lit_y, m0 );
+          index_list.add_output( m1 );
+          return index_list;
         }
       }
     }
@@ -357,6 +510,13 @@ public:
 private:
   mig_resyn_enum_params const ps;
   mutable uint32_t upper_bound{std::numeric_limits<uint32_t>::max()};
+
+  mutable uint32_t max_maj1_candidates{0};
+  mutable uint32_t max_maj2_candidates{0};
+  mutable uint32_t max_next_candidates{0};
+  mutable std::array<maj1_candidate, limit_maj1_candidates> maj1_candidates;
+  mutable std::array<maj2_candidate, limit_maj2_candidates> maj2_candidates;
+  mutable std::array<next_candidate, limit_next_candidates> next_candidates;
 };
 
 struct mig_resyn_engine_params

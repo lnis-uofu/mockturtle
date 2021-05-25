@@ -171,7 +171,7 @@ private:
     FunctionTT const target = tts[ntk.value( pivot )];
     FunctionTT const care = ~target.construct();
     resyn_fn.set_upper_bound( win.mffc_size() );
-    auto const index_list = resyn_fn( target, care, win.begin_nonff_nodes(), win.end_nonff_divisors(), tts,
+    auto const index_list = resyn_fn( target, care, win.begin_index_nonff_nodes(), win.end_index_nonff_nodes(), win.num_leaves(), tts,
                                       [&]( node const& n ){ return ntk.value( n ); } );
     if ( !index_list )
     {
@@ -192,7 +192,7 @@ private:
     assert( outputs.size() == 1u );
     ntk.substitute_node( pivot, outputs[0u] );
 
-    verify( win, outputs[0u], target, care );
+    assert( verify( win, outputs[0u], target, care ) && "verifying substitution failed" );
     return true;
   }
 
@@ -225,9 +225,7 @@ private:
                   fmt::format( fmt::emphasis::bold | fg( fmt::terminal_color::bright_green ), "{}", kitty::to_hex( resimulated ) ) );
     }
 #endif
-    assert( ( resimulated & care ) == ( expected & care ) );
-
-    return false;
+    return ( resimulated & care ) == ( expected & care );
   }
 
   void simulate_window( Window const& win )
