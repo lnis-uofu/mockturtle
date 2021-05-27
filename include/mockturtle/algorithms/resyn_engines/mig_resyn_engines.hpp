@@ -42,6 +42,80 @@
 #include <unordered_map>
 #include <cstdarg>
 
+namespace kitty
+{
+
+template<class TT>
+inline bool implies_ternary_majority( TT const& x, TT const& y, TT const& z, TT const& care, TT const& target )
+{
+  assert( target.num_blocks() == x.num_blocks() );
+  assert( target.num_blocks() == y.num_blocks() );
+  assert( target.num_blocks() == z.num_blocks() );
+  assert( target.num_blocks() == care.num_blocks() );
+
+  for ( auto i = 0; i < target.num_blocks(); ++i )
+  {
+    auto const& a = x._bits[i];
+    auto const& b = y._bits[i];
+    auto const& c = z._bits[i];
+    if ( ( ( ( a & ( b ^ c ) ) ^ ( b & c ) ) & care._bits[i] ) & ~target._bits[i] )
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+template<class TT>
+inline bool equals_ternary_majority( TT const& x, TT const& y, TT const& z, TT const& care, TT const& target )
+{
+  assert( target.num_blocks() == x.num_blocks() );
+  assert( target.num_blocks() == y.num_blocks() );
+  assert( target.num_blocks() == z.num_blocks() );
+  assert( target.num_blocks() == care.num_blocks() );
+
+  for ( auto i = 0; i < target.num_blocks(); ++i )
+  {
+    auto const& a = x._bits[i];
+    auto const& b = y._bits[i];
+    auto const& c = z._bits[i];
+    if ( ( ( ( a & ( b ^ c ) ) ^ ( b & c ) ) & care._bits[i] ) != target._bits[i] )
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+template<class TT>
+inline bool equals_two_ternary_majorities( TT const& x, TT const& y, TT const& u, TT const& v, TT const& w, TT const& care, TT const& target )
+{
+  assert( target.num_blocks() == x.num_blocks() );
+  assert( target.num_blocks() == y.num_blocks() );
+  assert( target.num_blocks() == u.num_blocks() );
+  assert( target.num_blocks() == v.num_blocks() );
+  assert( target.num_blocks() == w.num_blocks() );
+  assert( target.num_blocks() == care.num_blocks() );
+
+  for ( auto i = 0; i < target.num_blocks(); ++i )
+  {
+    auto const& a = x._bits[i];
+    auto const& b = y._bits[i];
+    auto const& c = u._bits[i];
+    auto const& d = v._bits[i];
+    auto const& e = w._bits[i];
+    auto const m0 = ( c & ( d ^ e ) ) ^ ( d & e );
+    auto const m1 = ( a & ( b ^ m0 ) ) ^ ( b & m0 );
+    if ( ( m1 & care._bits[i] ) != target._bits[i] )
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+}
+
 namespace mockturtle
 {
 
@@ -72,9 +146,9 @@ struct mig_resyn_enum_params
 template<
   class FunctionTT = kitty::dynamic_truth_table,
   mig_resyn_enum_strategy ResynStrategy = mig_resyn_enum_strategy::eager,
-  uint32_t limit_maj1_candidates = 500,
-  uint32_t limit_maj2_candidates = 500,
-  uint32_t limit_next_candidates = 500
+  uint32_t limit_maj1_candidates = 200,
+  uint32_t limit_maj2_candidates = 200,
+  uint32_t limit_next_candidates = 250
 >
 class mig_resyn_enum
 {
@@ -217,19 +291,20 @@ public:
       {
         FunctionTT const& tt_y = tts.at( y );
 
-        if ( ( kitty::ternary_majority( tt_x, tt_y, target_ ) & care ) == target_ )
+        // equal_ternary_majority
+        if ( kitty::equals_ternary_majority( tt_x, tt_y, target_, care, target_ ) )
         {
           auto& cand = maj1_candidates[max_maj1_candidates++];
           cand.x.c = 0; cand.x.v = 1 + x;
           cand.y.c = 0; cand.y.v = 1 + y;
         }
-        else if ( ( kitty::ternary_majority( ~tt_x, tt_y, target_ ) & care ) == target_ )
+        else if ( kitty::equals_ternary_majority( ~tt_x, tt_y, target_, care, target_ ) )
         {
           auto& cand = maj1_candidates[max_maj1_candidates++];
           cand.x.c = 1; cand.x.v = 1 + x;
           cand.y.c = 0; cand.y.v = 1 + y;
         }
-        else if ( ( kitty::ternary_majority( tt_x, ~tt_y, target_ ) & care ) == target_ )
+        else if ( kitty::equals_ternary_majority( tt_x, ~tt_y, target_, care, target_ ) )
         {
           auto& cand = maj1_candidates[max_maj1_candidates++];
           cand.x.c = 0; cand.x.v = 1 + x;
@@ -246,31 +321,34 @@ public:
         }
       }
 
-      if ( ( kitty::ternary_majority( tt_x, ~tt_zero, target_ ) & care ) == target_ )
+      if ( max_maj1_candidates < limit_maj1_candidates )
       {
-        auto& cand = maj1_candidates[max_maj1_candidates++];
-        cand.x.c = 0; cand.x.v = 1 + x;
-        cand.y.c = 1; cand.y.v = 0;
-      }
-      else if ( ( kitty::ternary_majority( ~tt_x, ~tt_zero, target_ ) & care ) == target_ )
-      {
-        auto& cand = maj1_candidates[max_maj1_candidates++];
-        cand.x.c = 1; cand.x.v = 1 + x;
-        cand.y.c = 1; cand.y.v = 0;
-      }
-      else if ( ( kitty::ternary_majority( tt_x, tt_zero, target_ ) & care ) == target_ )
-      {
-        auto& cand = maj1_candidates[max_maj1_candidates++];
-        cand.x.c = 0; cand.x.v = 1 + x;
-        cand.y.c = 0; cand.y.v = 0;
-      }
-      else if ( max_next_candidates < limit_next_candidates )
-      {
-        if ( std::find( std::begin( next_candidates ), std::begin( next_candidates ) + max_next_candidates, 1 + x ) ==
-             std::begin( next_candidates ) + max_next_candidates )
+        if ( kitty::equals_ternary_majority( tt_x, ~tt_zero, target_, care, target_ ) )
         {
-          auto& cand = next_candidates[max_next_candidates++];
-          cand.c = 0; cand.v = 1 + x;
+          auto& cand = maj1_candidates[max_maj1_candidates++];
+          cand.x.c = 0; cand.x.v = 1 + x;
+          cand.y.c = 1; cand.y.v = 0;
+        }
+        else if ( kitty::equals_ternary_majority( ~tt_x, ~tt_zero, target_, care, target_ ) )
+        {
+          auto& cand = maj1_candidates[max_maj1_candidates++];
+          cand.x.c = 1; cand.x.v = 1 + x;
+          cand.y.c = 1; cand.y.v = 0;
+        }
+        else if ( kitty::equals_ternary_majority( tt_x, tt_zero, target_, care, target_ ) )
+        {
+          auto& cand = maj1_candidates[max_maj1_candidates++];
+          cand.x.c = 0; cand.x.v = 1 + x;
+          cand.y.c = 0; cand.y.v = 0;
+        }
+        else if ( max_next_candidates < limit_next_candidates )
+        {
+          if ( std::find( std::begin( next_candidates ), std::begin( next_candidates ) + max_next_candidates, 1 + x ) ==
+               std::begin( next_candidates ) + max_next_candidates )
+          {
+            auto& cand = next_candidates[max_next_candidates++];
+            cand.c = 0; cand.v = 1 + x;
+          }
         }
       }
     }
@@ -299,7 +377,7 @@ public:
         assert( cand2.x.v != 0 );
         FunctionTT tt_z = cand2.x.c ? ~tts.at( cand2.x.v - 1 ) : tts.at( cand2.x.v - 1 );
 
-        if ( ( kitty::ternary_majority( tt_x, tt_y, tt_z ) & care ) == target_ )
+        if ( kitty::equals_ternary_majority( tt_x, tt_y, tt_z, care, target_ ) )
         {
           auto const m = index_list.add_maj( cand1.x.lit, cand1.y.lit, cand2.x.lit );
           index_list.add_output( m );
@@ -312,7 +390,7 @@ public:
           tt_z = ~tt_z;
         }
 
-        if ( ( kitty::ternary_majority( tt_x, tt_y, tt_z ) & care ) == target_ )
+        if ( kitty::equals_ternary_majority( tt_x, tt_y, tt_z, care, target_ ) )
         {
           auto const m = index_list.add_maj( cand1.x.lit, cand1.y.lit, cand2.y.lit );
           index_list.add_output( m );
@@ -356,56 +434,56 @@ public:
             tt_z = ~tt_z;
           }
 
-          if ( kitty::implies( kitty::ternary_majority( tt_x, tt_y, tt_z ) & care, target_ ) )
+          if ( kitty::implies_ternary_majority( tt_x, tt_y, tt_z, care, target_ ) )
           {
             auto& cand = maj2_candidates[max_maj2_candidates++];
             cand.x.lit = x.lit;
             cand.y.lit = y.lit;
             cand.z.lit = z.lit;
           }
-          else if ( kitty::implies( kitty::ternary_majority( ~tt_x, tt_y, tt_z ) & care, target_ ) )
+          else if ( kitty::implies_ternary_majority( ~tt_x, tt_y, tt_z, care, target_ ) )
           {
             auto& cand = maj2_candidates[max_maj2_candidates++];
             cand.x.c = 1 - x.c; cand.x.v = x.v;
             cand.y.lit = y.lit;
             cand.z.lit = z.lit;
           }
-          else if ( kitty::implies( kitty::ternary_majority( tt_x, ~tt_y, tt_z ) & care, target_ ) )
+          else if ( kitty::implies_ternary_majority( tt_x, ~tt_y, tt_z, care, target_ ) )
           {
             auto& cand = maj2_candidates[max_maj2_candidates++];
             cand.x.lit = x.lit;
             cand.y.c = 1 - y.c; cand.y.v = y.v;
             cand.z.lit = z.lit;
           }
-          else if ( kitty::implies( kitty::ternary_majority( tt_x, tt_y, ~tt_z ) & care, target_ ) )
+          else if ( kitty::implies_ternary_majority( tt_x, tt_y, ~tt_z, care, target_ ) )
           {
             auto& cand = maj2_candidates[max_maj2_candidates++];
             cand.x.lit = x.lit;
             cand.y.lit = y.lit;
             cand.z.c = 1 - z.c; cand.z.v = z.v;
           }
-          else if ( kitty::implies( kitty::ternary_majority( ~tt_x, ~tt_y, tt_z ) & care, target_ ) )
+          else if ( kitty::implies_ternary_majority( ~tt_x, ~tt_y, tt_z, care, target_ ) )
           {
             auto& cand = maj2_candidates[max_maj2_candidates++];
             cand.x.c = 1 - x.c; cand.x.v = x.v;
             cand.y.c = 1 - y.c; cand.y.v = y.v;
             cand.z.lit = z.lit;
           }
-          else if ( kitty::implies( kitty::ternary_majority( tt_x, ~tt_y, ~tt_z ) & care, target_ ) )
+          else if ( kitty::implies_ternary_majority( tt_x, ~tt_y, ~tt_z, care, target_ ) )
           {
             auto& cand = maj2_candidates[max_maj2_candidates++];
             cand.x.lit = x.lit;
             cand.y.c = 1 - y.c; cand.y.v = y.v;
             cand.z.c = 1 - z.c; cand.z.v = z.v;
           }
-          else if ( kitty::implies( kitty::ternary_majority( ~tt_x, tt_y, ~tt_z ) & care, target_ ) )
+          else if ( kitty::implies_ternary_majority( ~tt_x, tt_y, ~tt_z, care, target_ ) )
           {
             auto& cand = maj2_candidates[max_maj2_candidates++];
             cand.x.c = 1 - x.c; cand.x.v = x.v;
             cand.y.lit = y.lit;
             cand.z.c = 1 - z.c; cand.z.v = z.v;
           }
-          else if ( kitty::implies( kitty::ternary_majority( ~tt_x, ~tt_y, ~tt_z ) & care, target_ ) )
+          else if ( kitty::implies_ternary_majority( ~tt_x, ~tt_y, ~tt_z, care, target_ ) )
           {
             auto& cand = maj2_candidates[max_maj2_candidates++];
             cand.x.c = 1 - x.c; cand.x.v = x.v;
@@ -449,7 +527,7 @@ public:
           tt_w = ~tt_w;
         }
 
-        if ( ( kitty::ternary_majority( tt_x, tt_y, kitty::ternary_majority( tt_u, tt_v, tt_w ) ) & care )== target_ )
+        if ( equals_two_ternary_majorities( tt_x, tt_y, tt_u, tt_v, tt_w, care, target_ ) )
         {
           auto const m0 = index_list.add_maj( cand2.x.lit, cand2.y.lit, cand2.z.lit );
           auto const m1 = index_list.add_maj( cand1.x.lit, cand1.y.lit, m0 );
