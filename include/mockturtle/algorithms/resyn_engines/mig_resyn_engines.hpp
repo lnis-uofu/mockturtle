@@ -146,8 +146,8 @@ struct mig_resyn_enum_params
 template<
   class FunctionTT = kitty::dynamic_truth_table,
   mig_resyn_enum_strategy ResynStrategy = mig_resyn_enum_strategy::eager,
-  uint32_t limit_maj1_candidates = 200,
-  uint32_t limit_maj2_candidates = 200,
+  uint32_t limit_maj1_candidates = 300,
+  uint32_t limit_maj2_candidates = 300,
   uint32_t limit_next_candidates = 250
 >
 class mig_resyn_enum
