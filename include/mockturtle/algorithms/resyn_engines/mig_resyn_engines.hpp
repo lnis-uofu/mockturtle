@@ -46,6 +46,7 @@ namespace kitty
 {
 
 template<class TT>
+__attribute__((always_inline))
 inline bool implies_ternary_majority( TT const& x, TT const& y, TT const& z, TT const& care, TT const& target )
 {
   assert( target.num_blocks() == x.num_blocks() );
@@ -67,6 +68,7 @@ inline bool implies_ternary_majority( TT const& x, TT const& y, TT const& z, TT 
 }
 
 template<class TT>
+__attribute__((always_inline))
 inline bool equals_ternary_majority( TT const& x, TT const& y, TT const& z, TT const& care, TT const& target )
 {
   assert( target.num_blocks() == x.num_blocks() );
@@ -88,6 +90,7 @@ inline bool equals_ternary_majority( TT const& x, TT const& y, TT const& z, TT c
 }
 
 template<class TT>
+__attribute__((always_inline))
 inline bool equals_two_ternary_majorities( TT const& x, TT const& y, TT const& u, TT const& v, TT const& w, TT const& care, TT const& target )
 {
   assert( target.num_blocks() == x.num_blocks() );
