@@ -95,7 +95,11 @@ void write_blif( Ntk const& ntk, std::ostream& os, write_blif_params const& ps =
   topo_view topo_ntk{ntk};
 
   /* write model */
-  os << ".model top\n";
+  if constexpr ( has_get_network_name_v<Ntk>) {
+      os << ".model " << ntk.get_network_name() << "\n";
+  } else {
+      os << ".model top\n";
+  }
 
   /* write inputs */
   if ( topo_ntk.num_pis() > 0u )
