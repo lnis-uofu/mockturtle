@@ -52,23 +52,43 @@ namespace mockturtle
  * If a MAJ gate is satisfiability don't care for assignments 000 and 111, it can be
  * replaced by an XNOR gate.
  */
-inline xmg_network xmg_dont_cares_optimization( xmg_network const& xmg )
+    template <typename xmg_network_>
+inline xmg_network_ xmg_dont_cares_optimization( xmg_network_ const& xmg )
 {
-  node_map<xmg_network::signal, xmg_network> old_to_new( xmg );
+  node_map<typename xmg_network_::signal, xmg_network_> old_to_new( xmg );
 
-  xmg_network dest;
+  xmg_network_ dest;
+  if constexpr ( has_get_network_name_v<xmg_network_> && has_set_network_name_v<xmg_network_> )
+  {
+    dest.set_network_name( xmg.get_network_name() );
+  }
+
   old_to_new[xmg.get_constant( false )] = dest.get_constant( false );
 
   xmg.foreach_pi( [&]( auto const& n ) {
-    old_to_new[n] = dest.create_pi();
+    if constexpr ( has_has_name_v<xmg_network_> && has_get_name_v<xmg_network_> )
+    {
+      if ( xmg.has_name( n ) )
+      {
+        old_to_new[n] = { dest.create_pi( xmg.get_name( xmg.make_signal( n ) ) ), 0u };
+      }
+      else
+      {
+        old_to_new[n] = { dest.create_pi(), 0u };
+      }
+    }
+    else
+    {
+      old_to_new[n] = { dest.create_pi(), 0u };
+    }
   } );
 
-  satisfiability_dont_cares_checker<xmg_network> checker( xmg );
+  satisfiability_dont_cares_checker<xmg_network_> checker( xmg );
 
-  topo_view<xmg_network>{xmg}.foreach_node( [&]( auto const& n ) {
+  topo_view<xmg_network_>{xmg}.foreach_node( [&]( auto const& n ) {
     if ( xmg.is_constant( n ) || xmg.is_pi( n ) ) return;
 
-    std::array<xmg_network::signal, 3> fanin;
+    std::array<typename xmg_network_::signal, 3> fanin;
     xmg.foreach_fanin( n, [&]( auto const& f, auto i ) {
       fanin[i] = old_to_new[f] ^ xmg.is_complemented( f );
     } );
@@ -90,8 +110,30 @@ inline xmg_network xmg_dont_cares_optimization( xmg_network const& xmg )
     }
   } );
 
-  xmg.foreach_po( [&]( auto const& f ) {
-    dest.create_po( old_to_new[f] ^ xmg.is_complemented( f ) );
+  xmg.foreach_po( [&]( auto const& f, auto i ) {
+    auto s = old_to_new[f] ^ xmg.is_complemented( f ) ;
+    if constexpr ( has_has_output_name_v<xmg_network_> && has_get_output_name_v<xmg_network_> )
+    {
+      if ( xmg.has_output_name( i ) )
+      {
+        dest.create_po( s, xmg.get_output_name( i ) );
+      }
+      else
+      {
+        dest.create_po( s );
+      }
+    }
+    else
+    {
+      dest.create_po( s );
+    }
+    if constexpr ( has_has_name_v<xmg_network_> && has_get_name_v<xmg_network_> && has_set_name_v<xmg_network_> )
+    {
+      if ( xmg.has_name( f ) )
+      {
+        dest.set_name( s, xmg.get_name( f ) );
+      }
+    }
   });
 
   return dest;

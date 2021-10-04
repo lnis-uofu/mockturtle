@@ -47,7 +47,7 @@ namespace mockturtle
 {
 
 template<typename NtkSource, typename NtkDest, typename LeavesIterator>
-std::vector<signal<NtkDest>> cleanup_dangling( NtkSource const& ntk, NtkDest& dest, LeavesIterator begin, LeavesIterator end )
+std::vector<signal<NtkDest>> cleanup_dangling( NtkSource const& ntk, NtkDest& dest, LeavesIterator begin, LeavesIterator end)
 {
   (void)end;
 
@@ -265,15 +265,45 @@ NtkDest cleanup_dangling( NtkSrc const& ntk )
   static_assert( has_is_complemented_v<NtkSrc>, "NtkDest does not implement the is_complemented method" );
 
   NtkDest dest;
+  if constexpr ( has_get_network_name_v<NtkSrc> && has_set_network_name_v<NtkDest> )
+  {
+    dest.set_network_name( ntk.get_network_name() );
+  }
+
   std::vector<signal<NtkDest>> pis;
-  ntk.foreach_pi( [&]( auto ) {
-    pis.push_back( dest.create_pi() );
+  ntk.foreach_pi( [&]( auto n ) {
+    if constexpr ( has_has_name_v<NtkSrc> && has_get_name_v<NtkSrc> && has_has_name_v<NtkDest> && has_get_name_v<NtkDest>)
+    {
+      auto s = ntk.make_signal( n );
+      if ( ntk.has_name( s ) )
+      {
+        pis.push_back( dest.create_pi( ntk.get_name( s ) ) );
+      }
+      else
+      {
+        pis.push_back( dest.create_pi() );
+      }
+    }
+    else
+    {
+      pis.push_back( dest.create_pi() );
+    }
   } );
 
   for ( auto f : cleanup_dangling( ntk, dest, pis.begin(), pis.end() ) )
   {
     dest.create_po( f );
   }
+
+  if constexpr ( has_has_output_name_v<NtkSrc> && has_get_output_name_v<NtkSrc> )
+  {
+    ntk.foreach_po( [&]( auto p, auto i ) { // order should have been preserved.
+      if ( ntk.has_output_name( i ) )
+      {
+        dest.set_output_name( i, ntk.get_output_name( i ) );
+      }
+    } );
+  };
 
   return dest;
 }
@@ -330,11 +360,31 @@ Ntk cleanup_luts( Ntk const& ntk )
   static_assert( has_node_function_v<Ntk>, "Ntk does not implement the node_function method" );
 
   Ntk dest;
+  if constexpr ( has_get_network_name_v<Ntk> && has_set_network_name_v<Ntk> )
+  {
+    dest.set_network_name( ntk.get_network_name() );
+  }
+
   node_map<signal<Ntk>, Ntk> old_to_new( ntk );
 
   // PIs and constants
   ntk.foreach_pi( [&]( auto const& n ) {
-    old_to_new[n] = dest.create_pi();
+    if constexpr ( has_has_name_v<Ntk> && has_get_name_v<Ntk>)
+    {
+      auto s = ntk.make_signal( n );
+      if ( ntk.has_name( s ) )
+      {
+        old_to_new[n] = dest.create_pi( ntk.get_name( s ) );
+      }
+      else
+      {
+        old_to_new[n] = dest.create_pi();
+      }
+    }
+    else
+    {
+      old_to_new[n] = dest.create_pi();
+    }
   } );
   old_to_new[ntk.get_constant( false )] = dest.get_constant( false );
   if ( ntk.get_node( ntk.get_constant( true ) ) != ntk.get_node( ntk.get_constant( false ) ) )
@@ -402,10 +452,25 @@ Ntk cleanup_luts( Ntk const& ntk )
   } );
 
   // POs
-  ntk.foreach_po( [&]( auto const& f ) {
+  ntk.foreach_po( [&]( auto const& f, auto i ) {
     auto const& new_f = old_to_new[f];
-    dest.create_po( ntk.is_complemented( f ) ? dest.create_not( new_f ) : new_f );
-  });
+    auto s = ntk.is_complemented( f ) ? dest.create_not( new_f ) : new_f;
+    if constexpr ( has_has_output_name_v<Ntk> && has_get_output_name_v<Ntk> )
+    {
+      if ( ntk.has_output_name( i ) )
+      {
+        dest.create_po( s, ntk.get_output_name( i ) );
+      }
+      else
+      {
+        dest.create_po( s );
+      }
+    }
+    else
+    {
+      dest.create_po( s );
+    }
+  } );
 
   return dest;
 }

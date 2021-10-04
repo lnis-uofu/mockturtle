@@ -105,7 +105,7 @@ struct arrival_time_pair
  * could be used for replacement in the main balancing algorithm.  Using a callback
  * makes it possible to account for situations in which none, a single, or multiple
  * candidates are generated.
- * 
+ *
  * The callback returns a pair composed of the output signal of the replacement
  * candidate and the level of the new candidate.  Ideally, the rebalancing function
  * should not call the callback with candidates that a worse level.
@@ -133,6 +133,10 @@ struct balancing_impl
   Ntk run()
   {
     Ntk dest;
+    if constexpr ( has_get_network_name_v<Ntk> && has_set_network_name_v<Ntk> )
+    {
+      dest.set_network_name( ntk_.get_network_name() );
+    }
     node_map<arrival_time_pair<Ntk>, Ntk> old_to_new( ntk_ );
 
     /* input arrival times and mapping */
@@ -142,7 +146,21 @@ struct balancing_impl
       old_to_new[ntk_.get_constant( true )] = {dest.get_constant( true ), 0u};
     }
     ntk_.foreach_pi( [&]( auto const& n ) {
-      old_to_new[n] = {dest.create_pi(), 0u};
+      if constexpr ( has_has_name_v<Ntk> && has_get_name_v<Ntk> )
+      {
+        if ( ntk_.has_name( ntk_.make_signal( n ) ) )
+        {
+          old_to_new[n] = { dest.create_pi( ntk_.get_name( ntk_.make_signal( n ) ) ), 0u };
+        }
+        else
+        {
+          old_to_new[n] = { dest.create_pi(), 0u };
+        }
+      }
+      else
+      {
+        old_to_new[n] = { dest.create_pi(), 0u };
+      }
     } );
 
     std::shared_ptr<depth_view<Ntk, CostFn>> depth_ntk;
@@ -200,9 +218,31 @@ struct balancing_impl
       current_level = std::max( current_level, best.level );
     } );
 
-    ntk_.foreach_po( [&]( auto const& f ) {
+    ntk_.foreach_po( [&]( auto const& f, auto const i ) {
       const auto s = old_to_new[f].f;
-      dest.create_po( ntk_.is_complemented( f ) ? dest.create_not( s ) : s );
+      auto t = ntk_.is_complemented( f ) ? dest.create_not( s ) : s;
+      if constexpr ( has_has_output_name_v<Ntk> && has_get_output_name_v<Ntk> )
+      {
+        if ( ntk_.has_output_name( i ) )
+        {
+          dest.create_po( t, ntk_.get_output_name( i ) );
+        }
+        else
+        {
+          dest.create_po( t );
+        }
+      }
+      else
+      {
+        dest.create_po( t );
+      }
+      if constexpr ( has_has_name_v<Ntk> && has_get_name_v<Ntk> && has_set_name_v<Ntk> )
+      {
+        if ( ntk_.has_name( f ) )
+        {
+          dest.set_name( t, ntk_.get_name( f ) );
+        }
+      }
     } );
 
     return cleanup_dangling( dest );

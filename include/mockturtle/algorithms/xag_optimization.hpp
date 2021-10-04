@@ -61,28 +61,48 @@ namespace mockturtle
 namespace detail
 {
 
+template<typename xag_network_>
 class xag_constant_fanin_optimization_impl
 {
 public:
-  xag_constant_fanin_optimization_impl( xag_network const& xag )
+  xag_constant_fanin_optimization_impl( xag_network_ const& xag )
       : xag( xag )
   {
   }
 
-  xag_network run()
+  xag_network_ run()
   {
-    xag_network dest;
-
-    node_map<xag_network::signal, xag_network> old2new( xag );
-    node_map<std::vector<xag_network::node>, xag_network> lfi( xag );
+    xag_network_ dest;
+    if constexpr ( has_get_network_name_v<xag_network_> && has_set_network_name_v<xag_network_> )
+    {
+      dest.set_network_name( xag.get_network_name() );
+    }
+    node_map<typename xag_network_::signal, xag_network_> old2new( xag );
+    node_map<std::vector<typename xag_network_::node>, xag_network_> lfi( xag );
 
     old2new[xag.get_node( xag.get_constant( false ) )] = dest.get_constant( false );
     if ( xag.get_node( xag.get_constant( true ) ) != xag.get_node( xag.get_constant( false ) ) )
     {
       old2new[xag.get_node( xag.get_constant( true ) )] = dest.get_constant( true );
     }
-    xag.foreach_pi( [&]( auto const& n ) {
-      old2new[n] = dest.create_pi();
+    xag.foreach_pi( [&]( typename xag_network_::node const& n ) {
+      typename xag_network_::signal p;
+      if constexpr ( has_has_name_v<xag_network_> && has_get_name_v<xag_network_> )
+      {
+        if ( xag.has_name( xag.make_signal( n ) ) )
+        {
+	    p = dest.create_pi( xag.get_name( xag.make_signal( n ) ) );
+	}
+        else
+        {
+	    p = dest.create_pi();
+        }
+      }
+      else
+      {
+        p = dest.create_pi();
+      }
+      old2new[n] = p;
       lfi[n].emplace_back( n );
     } );
     topo_view topo{xag};
@@ -92,8 +112,8 @@ public:
 
       if ( xag.is_xor( n ) )
       {
-        std::array<xag_network::signal*, 2> children{};
-        std::array<std::vector<xag_network::node>*, 2> clfi{};
+        std::array<typename xag_network_::signal*, 2> children{};
+        std::array<std::vector<typename xag_network_::node>*, 2> clfi{};
         xag.foreach_fanin( n, [&]( auto const& f, auto i ) {
           children[i] = &old2new[f];
           clfi[i] = &lfi[f];
@@ -115,7 +135,7 @@ public:
       else /* is AND */
       {
         lfi[n].emplace_back( n );
-        std::vector<xag_network::signal> children;
+        std::vector<typename xag_network_::signal> children;
         xag.foreach_fanin( n, [&]( auto const& f ) {
           children.push_back( old2new[f] ^ xag.is_complemented( f ) );
         } );
@@ -123,23 +143,45 @@ public:
       }
     } );
 
-    xag.foreach_po( [&]( auto const& f ) {
-      dest.create_po( old2new[f] ^ xag.is_complemented( f ) );
+    xag.foreach_po( [&]( auto const& f, auto i ) {
+      auto s = old2new[f] ^ xag.is_complemented( f );
+      if constexpr ( has_has_output_name_v<xag_network_> && has_get_output_name_v<xag_network_> )
+      {
+        if ( xag.has_output_name( i ) )
+        {
+          dest.create_po( s, xag.get_output_name( i ) );
+        }
+        else
+        {
+          dest.create_po( s );
+        }
+      }
+      else
+      {
+        dest.create_po( s );
+      }
+      if constexpr ( has_has_name_v<xag_network_> && has_get_name_v<xag_network_> && has_set_name_v<xag_network_> )
+      {
+        if ( xag.has_name( f ) )
+        {
+          dest.set_name( s, xag.get_name( f ) );
+        }
+      }
     } );
 
     return cleanup_dangling( dest );
   }
 
 private:
-  std::vector<xag_network::node> merge( std::vector<xag_network::node> const& s1, std::vector<xag_network::node> const& s2 ) const
+  std::vector<typename xag_network_::node> merge( std::vector<typename xag_network_::node> const& s1, std::vector<typename xag_network_::node> const& s2 ) const
   {
-    std::vector<xag_network::node> s;
+    std::vector<typename xag_network_::node> s;
     std::set_symmetric_difference( s1.cbegin(), s1.cend(), s2.cbegin(), s2.cend(), std::back_inserter( s ) );
     return s;
   }
 
 private:
-  xag_network const& xag;
+  xag_network_ const& xag;
 };
 
 } // namespace detail
@@ -153,7 +195,8 @@ private:
  * property of the XOR operation.  In such cases the AND gate can be replaced
  * by a constant or a fanin.
  */
-inline xag_network xag_constant_fanin_optimization( xag_network const& xag )
+template<typename xag_network_>
+inline xag_network_ xag_constant_fanin_optimization( xag_network_ const& xag )
 {
   return detail::xag_constant_fanin_optimization_impl( xag ).run();
 }
@@ -163,24 +206,44 @@ inline xag_network xag_constant_fanin_optimization( xag_network const& xag )
  * If an AND gate is satisfiability don't care for assignment 00, it can be
  * replaced by an XNOR gate, therefore reducing the multiplicative complexity.
  */
-inline xag_network xag_dont_cares_optimization( xag_network const& xag )
+template <typename xag_network_>
+inline xag_network_ xag_dont_cares_optimization( xag_network_ const& xag )
 {
-  node_map<xag_network::signal, xag_network> old_to_new( xag );
+  node_map<typename xag_network_::signal, xag_network_> old_to_new( xag );
 
-  xag_network dest;
+  xag_network_ dest;
+  if constexpr ( has_get_network_name_v<xag_network_> && has_set_network_name_v<xag_network_> )
+  {
+    dest.set_network_name( xag.get_network_name() );
+  }
+
   old_to_new[xag.get_constant( false )] = dest.get_constant( false );
 
   xag.foreach_pi( [&]( auto const& n ) {
-    old_to_new[n] = dest.create_pi();
+    if constexpr ( has_has_name_v<xag_network_> && has_get_name_v<xag_network_> )
+    {
+      if ( xag.has_name( n ) )
+      {
+        old_to_new[n] = { dest.create_pi( xag.get_name( xag.make_signal( n ) ) ), 0u };
+      }
+      else
+      {
+        old_to_new[n] = { dest.create_pi(), 0u };
+      }
+    }
+    else
+    {
+      old_to_new[n] = { dest.create_pi(), 0u };
+    }
   } );
 
-  satisfiability_dont_cares_checker<xag_network> checker( xag );
+  satisfiability_dont_cares_checker<xag_network_> checker( xag );
 
-  topo_view<xag_network>{xag}.foreach_node( [&]( auto const& n ) {
+  topo_view<xag_network_>{xag}.foreach_node( [&]( auto const& n ) {
     if ( xag.is_constant( n ) || xag.is_pi( n ) )
       return;
 
-    std::array<xag_network::signal, 2> fanin{};
+    std::array<typename xag_network_::signal, 2> fanin{};
     xag.foreach_fanin( n, [&]( auto const& f, auto i ) {
       fanin[i] = old_to_new[f] ^ xag.is_complemented( f );
     } );
@@ -202,8 +265,30 @@ inline xag_network xag_dont_cares_optimization( xag_network const& xag )
     }
   } );
 
-  xag.foreach_po( [&]( auto const& f ) {
-    dest.create_po( old_to_new[f] ^ xag.is_complemented( f ) );
+  xag.foreach_po( [&]( auto const& f, auto i ) {
+    auto s = old_to_new[f] ^ xag.is_complemented( f );
+    if constexpr ( has_has_output_name_v<xag_network_> && has_get_output_name_v<xag_network_> )
+    {
+      if ( xag.has_output_name( i ) )
+      {
+        dest.create_po( s, xag.get_output_name( i ) );
+      }
+      else
+      {
+        dest.create_po( s );
+      }
+    }
+    else
+    {
+      dest.create_po( s );
+    }
+    if constexpr ( has_has_name_v<xag_network_> && has_get_name_v<xag_network_> && has_set_name_v<xag_network_> )
+    {
+      if ( xag.has_name( f ) )
+      {
+        dest.set_name( s, xag.get_name( f ) );
+      }
+    }
   } );
 
   return dest;
@@ -214,7 +299,8 @@ inline xag_network xag_dont_cares_optimization( xag_network const& xag )
  * See `exact_linear_resynthesis_optimization` for an example implementation
  * of this function.
  */
-inline xag_network linear_resynthesis_optimization( xag_network const& xag, std::function<xag_network(xag_network const&)> linear_resyn, std::function<void(std::vector<uint32_t> const&)> const& on_ignore_inputs = {} )
+template<typename xag_network_>
+inline xag_network_ linear_resynthesis_optimization( xag_network_ const& xag, std::function<xag_network_(xag_network_ const&)> linear_resyn, std::function<void(std::vector<uint32_t> const&)> const& on_ignore_inputs = {} )
 {
   const auto num_ands = *multiplicative_complexity( xag );
   if ( num_ands == 0u )
@@ -246,14 +332,14 @@ inline xag_network linear_resynthesis_optimization( xag_network const& xag, std:
 
 /*! \brief Optimizes XOR gates by exact linear network resynthesis
  */
-template<bill::solvers Solver = bill::solvers::glucose_41>
-inline xag_network exact_linear_resynthesis_optimization( xag_network const& xag, uint32_t conflict_limit = 0u )
+template<typename xag_network_, bill::solvers Solver = bill::solvers::glucose_41>
+inline xag_network_ exact_linear_resynthesis_optimization( xag_network_ const& xag, uint32_t conflict_limit = 0u )
 {
   exact_linear_synthesis_params ps;
   ps.conflict_limit = conflict_limit;
 
-  const auto linear_resyn = [&]( xag_network const& linear ) {
-    if ( const auto optimized = exact_linear_resynthesis<xag_network, Solver>( linear, ps ); optimized )
+  const auto linear_resyn = [&]( xag_network_ const& linear ) {
+    if ( const auto optimized = exact_linear_resynthesis<xag_network_, Solver>( linear, ps ); optimized )
     {
       return *optimized;
     }
