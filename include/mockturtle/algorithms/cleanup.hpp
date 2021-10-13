@@ -84,7 +84,7 @@ std::vector<signal<NtkDest>> cleanup_dangling( NtkSource const& ntk, NtkDest& de
   /* foreach node in topological order */
   topo_view topo{ntk};
   topo.foreach_node( [&]( auto node ) {
-    if ( ntk.is_constant( node ) || ntk.is_pi( node ) )
+    if ( ntk.is_constant( node ) || ntk.is_pi( node ) || ntk.is_ro( node ) )
       return;
 
     /* collect children */
