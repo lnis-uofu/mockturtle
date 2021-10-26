@@ -242,7 +242,7 @@ std::vector<signal<NtkDest>> cleanup_dangling( NtkSource const& ntk, NtkDest& de
  * - `foreach_pi`
  * - `foreach_po`
  * - `clone_node`
- * - `is_pi`
+ * - `is_ci`
  * - `is_constant`
  */
 template<class NtkSrc, class NtkDest = NtkSrc>
@@ -256,7 +256,7 @@ NtkDest cleanup_dangling( NtkSrc const& ntk )
   static_assert( has_foreach_node_v<NtkSrc>, "NtkSrc does not implement the foreach_node method" );
   static_assert( has_foreach_pi_v<NtkSrc>, "NtkSrc does not implement the foreach_pi method" );
   static_assert( has_foreach_po_v<NtkSrc>, "NtkSrc does not implement the foreach_po method" );
-  static_assert( has_is_pi_v<NtkSrc>, "NtkSrc does not implement the is_pi method" );
+  static_assert( has_is_ci_v<NtkSrc>, "NtkSrc does not implement the is_ci method" );
   static_assert( has_is_constant_v<NtkSrc>, "NtkSrc does not implement the is_constant method" );
   static_assert( has_clone_node_v<NtkDest>, "NtkDest does not implement the clone_node method" );
   static_assert( has_create_pi_v<NtkDest>, "NtkDest does not implement the create_pi method" );
@@ -270,40 +270,216 @@ NtkDest cleanup_dangling( NtkSrc const& ntk )
     dest.set_network_name( ntk.get_network_name() );
   }
 
+  node_map<signal<NtkDest>, NtkSrc> old_to_new( ntk );
+
   std::vector<signal<NtkDest>> pis;
   ntk.foreach_pi( [&]( auto n ) {
-    if constexpr ( has_has_name_v<NtkSrc> && has_get_name_v<NtkSrc> && has_has_name_v<NtkDest> && has_get_name_v<NtkDest>)
+    if constexpr ( has_has_name_v<NtkSrc> && has_get_name_v<NtkSrc> && has_has_name_v<NtkDest> && has_get_name_v<NtkDest> )
     {
       auto s = ntk.make_signal( n );
       if ( ntk.has_name( s ) )
       {
-        pis.push_back( dest.create_pi( ntk.get_name( s ) ) );
+        old_to_new[n] = dest.create_pi( ntk.get_name( s ) );
       }
       else
       {
-        pis.push_back( dest.create_pi() );
+        old_to_new[n] = dest.create_pi();
       }
     }
     else
     {
-      pis.push_back( dest.create_pi() );
+      old_to_new[n] = dest.create_pi();
     }
   } );
 
-  for ( auto f : cleanup_dangling( ntk, dest, pis.begin(), pis.end() ) )
+  ntk.foreach_register( [&]( std::pair<typename NtkSrc::signal, typename NtkSrc::node> reg ) {
+    typename NtkSrc::node ro = reg.second;
+    if constexpr ( has_has_name_v<NtkSrc> && has_get_name_v<NtkSrc> && has_has_name_v<NtkDest> && has_get_name_v<NtkDest> )
+    {
+      auto ros = ntk.make_signal( ro );
+      if ( ntk.has_name( ros ) )
+      {
+        old_to_new[ro] = dest.create_ro( ntk.get_name( ros ) );
+      }
+      else
+      {
+        old_to_new[ro] = dest.create_ro();
+      }
+    }
+    else
+    {
+      old_to_new[ro] = dest.create_ro();
+    }
+  } );
+
+  old_to_new[ntk.get_constant( false )] = dest.get_constant( false );
+
+  if ( ntk.get_node( ntk.get_constant( true ) ) != ntk.get_node( ntk.get_constant( false ) ) )
   {
-    dest.create_po( f );
+    old_to_new[ntk.get_constant( true )] = dest.get_constant( true );
   }
 
-  if constexpr ( has_has_output_name_v<NtkSrc> && has_get_output_name_v<NtkSrc> )
-  {
-    ntk.foreach_po( [&]( auto p, auto i ) { // order should have been preserved.
-      if ( ntk.has_output_name( i ) )
+  /* foreach node in topological order */
+  topo_view topo{ntk};
+  topo.foreach_node( [&]( auto node ) {
+    if ( ntk.is_constant( node ) || ntk.is_ci( node ))
+      return;
+
+    /* collect children */
+    std::vector<signal<NtkDest>> children;
+    ntk.foreach_fanin( node, [&]( auto child, auto ) {
+      const auto f = old_to_new[child];
+      if ( ntk.is_complemented( child ) )
       {
-        dest.set_output_name( i, ntk.get_output_name( i ) );
+        children.push_back( dest.create_not( f ) );
+      }
+      else
+      {
+        children.push_back( f );
       }
     } );
-  };
+    if constexpr ( std::is_same_v<NtkSrc, NtkDest> )
+    {
+      old_to_new[node] = dest.clone_node( ntk, node, children );
+    }
+    else
+    {
+      do
+      {
+        if constexpr ( has_is_and_v<NtkSrc> )
+        {
+          static_assert( has_create_and_v<NtkDest>, "NtkDest cannot create AND gates" );
+          if ( ntk.is_and( node ) )
+          {
+            old_to_new[node] = dest.create_and( children[0], children[1] );
+            break;
+          }
+        }
+        if constexpr ( has_is_or_v<NtkSrc> )
+        {
+          static_assert( has_create_or_v<NtkDest>, "NtkDest cannot create OR gates" );
+          if ( ntk.is_or( node ) )
+          {
+            old_to_new[node] = dest.create_or( children[0], children[1] );
+            break;
+          }
+        }
+        if constexpr ( has_is_xor_v<NtkSrc> )
+        {
+          static_assert( has_create_xor_v<NtkDest>, "NtkDest cannot create XOR gates" );
+          if ( ntk.is_xor( node ) )
+          {
+            old_to_new[node] = dest.create_xor( children[0], children[1] );
+            break;
+          }
+        }
+        if constexpr ( has_is_maj_v<NtkSrc> )
+        {
+          static_assert( has_create_maj_v<NtkDest>, "NtkDest cannot create MAJ gates" );
+          if ( ntk.is_maj( node ) )
+          {
+            old_to_new[node] = dest.create_maj( children[0], children[1], children[2] );
+            break;
+          }
+        }
+        if constexpr ( has_is_ite_v<NtkSrc> )
+        {
+          static_assert( has_create_ite_v<NtkDest>, "NtkDest cannot create ITE gates" );
+          if ( ntk.is_ite( node ) )
+          {
+            old_to_new[node] = dest.create_ite( children[0], children[1], children[2] );
+            break;
+          }
+        }
+        if constexpr ( has_is_xor3_v<NtkSrc> )
+        {
+          static_assert( has_create_xor3_v<NtkDest>, "NtkDest cannot create XOR3 gates" );
+          if ( ntk.is_xor3( node ) )
+          {
+            old_to_new[node] = dest.create_xor3( children[0], children[1], children[2] );
+            break;
+          }
+        }
+        if constexpr ( has_is_nary_and_v<NtkSrc> )
+        {
+          static_assert( has_create_nary_and_v<NtkDest>, "NtkDest cannot create n-ary AND gates" );
+          if ( ntk.is_nary_and( node ) )
+          {
+            old_to_new[node] = dest.create_nary_and( children );
+            break;
+          }
+        }
+        if constexpr ( has_is_nary_or_v<NtkSrc> )
+        {
+          static_assert( has_create_nary_or_v<NtkDest>, "NtkDest cannot create n-ary OR gates" );
+          if ( ntk.is_nary_or( node ) )
+          {
+            old_to_new[node] = dest.create_nary_or( children );
+            break;
+          }
+        }
+        if constexpr ( has_is_nary_xor_v<NtkSrc> )
+        {
+          static_assert( has_create_nary_xor_v<NtkDest>, "NtkDest cannot create n-ary XOR gates" );
+          if ( ntk.is_nary_xor( node ) )
+          {
+            old_to_new[node] = dest.create_nary_xor( children );
+            break;
+          }
+        }
+        if constexpr ( has_is_function_v<NtkSrc> )
+        {
+          static_assert( has_create_node_v<NtkDest>, "NtkDest cannot create arbitrary function gates" );
+          old_to_new[node] = dest.create_node( children, ntk.node_function( node ) );
+          break;
+        }
+        std::cerr << "[e] something went wrong, could not copy node " << ntk.node_to_index( node ) << "\n";
+      } while ( false );
+    }
+  } );
+
+  ntk.foreach_po( [&]( auto po ) {
+    const auto f = old_to_new[po];
+    typename NtkDest::signal g = ntk.is_complemented( po ) ? dest.create_not( old_to_new[po] ) : old_to_new[po];
+
+    if constexpr ( has_has_output_name_v<NtkSrc> && has_get_output_name_v<NtkSrc> )
+    {
+      if ( ntk.has_output_name( ntk.po_index( po ) ) )
+      {
+        dest.create_po( g, ntk.get_output_name( ntk.po_index( po ) ) );
+      }
+      else
+      {
+        dest.create_po( g );
+      }
+    }
+    else
+    {
+      dest.create_po( g );
+    }
+  } );
+
+  ntk.foreach_register( [&]( std::pair<typename NtkSrc::signal, typename NtkSrc::node> reg ) {
+    typename NtkSrc::signal ri = reg.first;
+    typename NtkSrc::node ro = reg.second;
+    typename NtkDest::signal g = ntk.is_complemented( ri ) ? dest.create_not( old_to_new[ri] ) : old_to_new[ri];
+
+    if constexpr ( has_has_output_name_v<NtkSrc> && has_get_output_name_v<NtkSrc> )
+    {
+      if ( ntk.has_output_name( ntk.ri_index( ri ) ) )
+      {
+        dest.create_ri( g, 0, ntk.get_output_name( ntk.ri_index( ri ) ) );
+      }
+      else
+      {
+        dest.create_ri( g );
+      }
+    }
+    else
+    {
+      dest.create_ri( g );
+    }
+  } );
 
   return dest;
 }
