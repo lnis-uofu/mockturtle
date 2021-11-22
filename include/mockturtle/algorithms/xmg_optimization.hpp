@@ -68,18 +68,18 @@ inline xmg_network_ xmg_dont_cares_optimization( xmg_network_ const& xmg )
   xmg.foreach_pi( [&]( auto const& n ) {
     if constexpr ( has_has_name_v<xmg_network_> && has_get_name_v<xmg_network_> )
     {
-      if ( xmg.has_name( n ) )
+      if ( xmg.has_name( xmg.make_signal (n) ) )
       {
-        old_to_new[n] = { dest.create_pi( xmg.get_name( xmg.make_signal( n ) ) ), 0u };
+        old_to_new[n] =(dest.create_pi( xmg.get_name( xmg.make_signal( n ) ) ));
       }
       else
       {
-        old_to_new[n] = { dest.create_pi(), 0u };
+        old_to_new[n] =(dest.create_pi());
       }
     }
     else
     {
-      old_to_new[n] = { dest.create_pi(), 0u };
+      old_to_new[n] = (dest. create_pi());
     }
   } );
 
