@@ -90,14 +90,15 @@ public:
     return s;
   }
 
-  void create_po( signal const& s, std::string const& name = {} )
+  uint32_t create_po( signal const& s, std::string const& name = {} )
   {
     const auto index = Ntk::num_pos();
-    Ntk::create_po( s, name );
+    auto id = Ntk::create_po( s, name );
     if ( !name.empty() )
     {
       set_output_name( index, name );
     }
+    return id;
   }
 
   template<typename StrType = const char*>

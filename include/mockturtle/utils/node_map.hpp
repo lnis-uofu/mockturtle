@@ -197,10 +197,10 @@ public:
       data->resize( ntk->size(), init_value );
     }
   }
-
+  std::shared_ptr<container_type> data;
 private:
   Ntk const *ntk;
-  std::shared_ptr<container_type> data;
+
 };
 
 /*! \brief Unordered node map
