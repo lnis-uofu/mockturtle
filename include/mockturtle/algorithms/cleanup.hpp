@@ -575,6 +575,7 @@ NtkDest cleanup_dangling_with_registers( NtkSrc const& ntk )
     {
       old_to_new[ro] = dest.create_ro();
     }
+    dest._storage->latch_information[dest.get_node(old_to_new[ro])] = ntk._storage->latch_information[ro];
   } );
 
   old_to_new[ntk.get_constant( false )] = dest.get_constant( false );
