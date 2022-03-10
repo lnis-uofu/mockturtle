@@ -101,6 +101,27 @@ public:
     return id;
   }
 
+  signal create_ro( std::string const& name = std::string() )
+  {
+    const auto s = Ntk::create_ro( name );
+    if ( !name.empty() )
+    {
+      set_name( s, name );
+    }
+    return s;
+  }
+
+  uint32_t create_ri( signal const& f, int8_t reset = 0, std::string const& name = std::string() )
+  {
+    const auto index = Ntk::num_pos();
+    auto id = Ntk::create_ri( f, reset, name );
+    if ( !name.empty() )
+    {
+      set_output_name( index, name );
+    }
+    return id;
+  }
+
   template<typename StrType = const char*>
   void set_network_name( StrType name ) noexcept
   {
