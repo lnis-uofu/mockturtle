@@ -438,15 +438,15 @@ NtkDest cleanup_dangling( NtkSrc const& ntk )
     }
   } );
 
-  ntk.foreach_po( [&]( auto po ) {
+  ntk.foreach_po( [&]( auto po, auto index ) {
     const auto f = old_to_new[po];
     typename NtkDest::signal g = ntk.is_complemented( po ) ? dest.create_not( old_to_new[po] ) : old_to_new[po];
 
     if constexpr ( has_has_output_name_v<NtkSrc> && has_get_output_name_v<NtkSrc> )
     {
-      if ( ntk.has_output_name( ntk.po_index( po ) ) )
+      if ( ntk.has_output_name( index ) )
       {
-        dest.create_po( g, ntk.get_output_name( ntk.po_index( po ) ) );
+        dest.create_po( g, ntk.get_output_name( index ) );
       }
       else
       {
@@ -459,16 +459,14 @@ NtkDest cleanup_dangling( NtkSrc const& ntk )
     }
   } );
 
-  ntk.foreach_register( [&]( std::pair<typename NtkSrc::signal, typename NtkSrc::node> reg ) {
-    typename NtkSrc::signal ri = reg.first;
-    typename NtkSrc::node ro = reg.second;
+  ntk.foreach_ri( [&]( auto ri, auto index ) {
     typename NtkDest::signal g = ntk.is_complemented( ri ) ? dest.create_not( old_to_new[ri] ) : old_to_new[ri];
 
     if constexpr ( has_has_output_name_v<NtkSrc> && has_get_output_name_v<NtkSrc> )
     {
-      if ( ntk.has_output_name( ntk.ri_index( ri ) ) )
+      if ( ntk.has_output_name( index ) )
       {
-        dest.create_ri( g, 0, ntk.get_output_name( ntk.ri_index( ri ) ) );
+        dest.create_ri( g, 0, ntk.get_output_name( index ) );
       }
       else
       {
@@ -705,15 +703,15 @@ NtkDest cleanup_dangling_with_registers( NtkSrc const& ntk )
     }
   } );
 
-  ntk.foreach_po( [&]( auto po ) {
+  ntk.foreach_po( [&]( auto po, auto index ) {
     const auto f = old_to_new[po];
     typename NtkDest::signal g = ntk.is_complemented( po ) ? dest.create_not( old_to_new[po] ) : old_to_new[po];
 
     if constexpr ( has_has_output_name_v<NtkSrc> && has_get_output_name_v<NtkSrc> )
     {
-      if ( ntk.has_output_name( ntk.po_index( po ) ) )
+      if ( ntk.has_output_name( index ) )
       {
-        dest.create_po( g, ntk.get_output_name( ntk.po_index( po ) ) );
+        dest.create_po( g, ntk.get_output_name( index ) );
       }
       else
       {
@@ -726,16 +724,16 @@ NtkDest cleanup_dangling_with_registers( NtkSrc const& ntk )
     }
   } );
 
-  ntk.foreach_register( [&]( std::pair<typename NtkSrc::signal, typename NtkSrc::node> reg ) {
-    typename NtkSrc::signal ri = reg.first;
-    typename NtkSrc::node ro = reg.second;
+  ntk.foreach_ri( [&]( auto ri, auto index ) {
+    // typename NtkSrc::signal ri = reg.first;
+    // typename NtkSrc::node ro = reg.second;
     typename NtkDest::signal g = ntk.is_complemented( ri ) ? dest.create_not( old_to_new[ri] ) : old_to_new[ri];
 
     if constexpr ( has_has_output_name_v<NtkSrc> && has_get_output_name_v<NtkSrc> )
     {
-      if ( ntk.has_output_name( ntk.ri_index( ri ) ) )
+      if ( ntk.has_output_name( index ) )
       {
-        dest.create_ri( g, 0, ntk.get_output_name( ntk.ri_index( ri ) ) );
+        dest.create_ri( g, 0, ntk.get_output_name( index ) );
       }
       else
       {
