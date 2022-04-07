@@ -29,9 +29,6 @@
 #include <mockturtle/algorithms/window_rewriting.hpp>
 #include <mockturtle/io/aiger_reader.hpp>
 #include <mockturtle/networks/aig.hpp>
-#include <mockturtle/views/color_view.hpp>
-#include <mockturtle/views/depth_view.hpp>
-#include <mockturtle/views/fanout_view.hpp>
 #include <lorina/aiger.hpp>
 
 #include <fmt/format.h>
@@ -49,10 +46,7 @@ struct stats
 
 aig_network optimize( aig_network const& aig, window_rewriting_params const& ps, window_rewriting_stats& st )
 {
-  fanout_view faig{aig};
-  depth_view daig{faig};
-  color_view caig{daig};
-  window_rewriting( caig, ps, &st );
+  window_rewriting( aig, ps, &st );
   return cleanup_dangling( aig );
 }
 

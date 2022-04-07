@@ -25,9 +25,10 @@ and prints them for each node.
 #include <lorina/aiger.hpp>
 
 mockturtle::aig_network aig;
-lorina::read_aiger( "file.aig", mockturtle::aiger_reader( aig ) );
+auto const result = lorina::read_aiger( "file.aig", mockturtle::aiger_reader( aig ) );
+assert( result == lorina::return_code::success );
 
-const auto cuts = cut_enumeration( aig );
+auto const cuts = cut_enumeration( aig );
 aig.foreach_node( [&]( auto node ) {
   std::cout << cuts.cuts( aig.node_to_index( node ) ) << "\n";
 } );
@@ -36,7 +37,7 @@ aig.foreach_node( [&]( auto node ) {
 ## Installation requirements
 
 A modern compiler is required to build *mockturtle*.  We are continously
-testing with Clang 9.0.1, GCC 9.3.0, and GCC 10.2.0.  More information can be
+testing with Clang 12.0.1, GCC 9.3.0, and GCC 10.2.0.  More information can be
 found in the [documentation](http://mockturtle.readthedocs.io/en/latest/installation.html).
 
 ## EPFL logic sythesis libraries

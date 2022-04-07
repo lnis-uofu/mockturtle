@@ -74,6 +74,14 @@ algorithm.  Several views are implemented in mockturtle.
 .. doxygenclass:: mockturtle::window_view
    :members:
 
+`binding_view`: Add bindings to a technology library
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Header:** ``mockturtle/views/binding_view.hpp``
+
+.. doxygenclass:: mockturtle::binding_view
+   :members:
+
 `names_view`: Assign names to signals and outputs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -99,15 +107,4 @@ algorithm.  Several views are implemented in mockturtle.
    :members:
 
 .. doxygenclass:: mockturtle::out_of_place_color_view
-   :members:
-
-`aqfp_view`: Counts number of buffers and splitters for AQFP
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-**Header:** ``mockturtle/views/aqfp_view.hpp``
-
-.. doxygenstruct:: mockturtle::aqfp_view_params
-   :members:
-
-.. doxygenclass:: mockturtle::aqfp_view
    :members:

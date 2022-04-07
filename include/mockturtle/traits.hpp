@@ -30,15 +30,17 @@
   \author Heinz Riener
   \author Mathias Soeken
   \author Max Austin
+  \author Siang-Yun (Sonia) Lee
 */
 
 #pragma once
 
-#include <string>
-#include <type_traits>
 #include <list>
 #include <map>
+#include <string>
+#include <type_traits>
 
+#include <kitty/cube.hpp>
 #include <kitty/dynamic_truth_table.hpp>
 #include <kitty/traits.hpp>
 
@@ -70,6 +72,29 @@ struct is_network_type<Ntk, std::enable_if_t<
 
 template<class Ntk>
 inline constexpr bool is_network_type_v = is_network_type<Ntk>::value;
+
+template<class Ntk>
+struct is_buffered_network_type : std::false_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool is_buffered_network_type_v = is_buffered_network_type<Ntk>::value;
+
+#pragma region has_clone
+template<class Ntk, class = void>
+struct has_clone : std::false_type
+{
+};
+
+template<class Ntk>
+struct has_clone<Ntk, std::void_t<decltype( std::declval<Ntk>().clone() )>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool has_clone_v = has_clone<Ntk>::value;
+#pragma endregion
 
 #pragma region is_topologically_sorted
 template<class Ntk, class = void>
@@ -536,6 +561,21 @@ template<class Ntk>
 inline constexpr bool has_create_node_v = has_create_node<Ntk>::value;
 #pragma endregion
 
+#pragma region has_create_cover_node
+template<class Ntk, class = void>
+struct has_create_cover_node : std::false_type
+{
+};
+
+template<class Ntk>
+struct has_create_cover_node<Ntk, std::void_t<decltype( std::declval<Ntk>().create_cover_node( std::declval<std::vector<signal<Ntk>>>(), std::declval<std::pair<std::vector<kitty::cube>, bool>>() ) )>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool has_create_cover_node_v = has_create_cover_node<Ntk>::value;
+#pragma endregion
+
 #pragma region has_clone_node
 template<class Ntk, class = void>
 struct has_clone_node : std::false_type
@@ -939,6 +979,21 @@ struct has_is_on_critical_path<Ntk, std::void_t<decltype( std::declval<Ntk>().is
 
 template<class Ntk>
 inline constexpr bool has_is_on_critical_path_v = has_is_on_critical_path<Ntk>::value;
+#pragma endregion
+
+#pragma region has_is_buf
+template<class Ntk, class = void>
+struct has_is_buf : std::false_type
+{
+};
+
+template<class Ntk>
+struct has_is_buf<Ntk, std::void_t<decltype( std::declval<Ntk>().is_buf( std::declval<node<Ntk>>() ) )>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool has_is_buf_v = has_is_buf<Ntk>::value;
 #pragma endregion
 
 #pragma region has_is_and
@@ -1518,7 +1573,7 @@ struct has_foreach_register : std::false_type
 };
 
 template<class Ntk>
-struct has_foreach_register<Ntk, std::void_t<decltype( std::declval<Ntk>().foreach_register( std::declval<void( std::pair<node<Ntk>,signal<Ntk>>, uint32_t )>() ) )>> : std::true_type
+struct has_foreach_register<Ntk, std::void_t<decltype( std::declval<Ntk>().foreach_register( std::declval<void( std::pair<node<Ntk>, signal<Ntk>>, uint32_t )>() ) )>> : std::true_type
 {
 };
 
@@ -1570,6 +1625,7 @@ struct has_compute<Ntk, T, std::void_t<decltype( std::declval<Ntk>().compute( st
 template<class Ntk, typename T>
 inline constexpr bool has_compute_v = has_compute<Ntk, T>::value;
 #pragma endregion
+
 
 #pragma region has_compute_inplace
 template<class Ntk, typename T, class = void>
@@ -2099,12 +2155,12 @@ inline constexpr bool has_eval_fanins_color_v = has_eval_fanins_color<Ntk>::valu
 /*! \brief SFINAE based on iterator type (for compute functions).
  */
 template<typename Iterator, typename T>
-using iterates_over_t = std::enable_if_t<std::is_same_v<typename Iterator::value_type, T>, T>;
+using iterates_over_t = std::enable_if_t<std::is_same_v<typename std::iterator_traits<Iterator>::value_type, T>, T>;
 
 /*! \brief SFINAE based on iterator type for truth tables (for compute functions).
  */
 template<typename Iterator>
-using iterates_over_truth_table_t = std::enable_if_t<kitty::is_truth_table<typename Iterator::value_type>::value, typename Iterator::value_type>;
+using iterates_over_truth_table_t = std::enable_if_t<kitty::is_truth_table<typename std::iterator_traits<Iterator>::value_type>::value, typename std::iterator_traits<Iterator>::value_type>;
 
 template<class Iterator, typename T>
 inline constexpr bool iterates_over_v = std::is_same_v<typename Iterator::value_type, T>;

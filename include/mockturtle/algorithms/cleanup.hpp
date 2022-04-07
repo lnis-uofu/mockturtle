@@ -47,7 +47,7 @@ namespace mockturtle
 {
 
 template<typename NtkSource, typename NtkDest, typename LeavesIterator>
-std::vector<signal<NtkDest>> cleanup_dangling( NtkSource const& ntk, NtkDest& dest, LeavesIterator begin, LeavesIterator end)
+std::vector<signal<NtkDest>> cleanup_dangling( NtkSource const& ntk, NtkDest& dest, LeavesIterator begin, LeavesIterator end )
 {
   (void)end;
 
@@ -219,8 +219,11 @@ std::vector<signal<NtkDest>> cleanup_dangling( NtkSource const& ntk, NtkDest& de
 
 /*! \brief Cleans up dangling nodes.
  *
- * This method reconstructs a network and omits all dangling nodes.  The
- * network types of the source and destination network are the same.
+ * This method reconstructs a network and omits all dangling nodes. If the flag
+ * `remove_dangling_PIs` is true, dangling PIs are also omitted. If the flag
+ * `remove_redundant_POs` is true, redundant POs, i.e. POs connected to a PI or
+ * constant, are also omitted. The network types of the source and destination
+ * network are the same.
  *
    \verbatim embed:rst
 
@@ -242,11 +245,11 @@ std::vector<signal<NtkDest>> cleanup_dangling( NtkSource const& ntk, NtkDest& de
  * - `foreach_pi`
  * - `foreach_po`
  * - `clone_node`
- * - `is_ci`
+ * - `is_pi`
  * - `is_constant`
  */
 template<class NtkSrc, class NtkDest = NtkSrc>
-NtkDest cleanup_dangling( NtkSrc const& ntk )
+[[nodiscard]] NtkDest cleanup_dangling( NtkSrc const& ntk, bool remove_dangling_PIs = false, bool remove_redundant_POs = false )
 {
   static_assert( is_network_type_v<NtkSrc>, "NtkSrc is not a network type" );
   static_assert( is_network_type_v<NtkDest>, "NtkDest is not a network type" );
@@ -256,7 +259,7 @@ NtkDest cleanup_dangling( NtkSrc const& ntk )
   static_assert( has_foreach_node_v<NtkSrc>, "NtkSrc does not implement the foreach_node method" );
   static_assert( has_foreach_pi_v<NtkSrc>, "NtkSrc does not implement the foreach_pi method" );
   static_assert( has_foreach_po_v<NtkSrc>, "NtkSrc does not implement the foreach_po method" );
-  static_assert( has_is_ci_v<NtkSrc>, "NtkSrc does not implement the is_ci method" );
+  static_assert( has_is_pi_v<NtkSrc>, "NtkSrc does not implement the is_pi method" );
   static_assert( has_is_constant_v<NtkSrc>, "NtkSrc does not implement the is_constant method" );
   static_assert( has_clone_node_v<NtkDest>, "NtkDest does not implement the clone_node method" );
   static_assert( has_create_pi_v<NtkDest>, "NtkDest does not implement the create_pi method" );
@@ -272,8 +275,11 @@ NtkDest cleanup_dangling( NtkSrc const& ntk )
 
   node_map<signal<NtkDest>, NtkSrc> old_to_new( ntk );
 
-  std::vector<signal<NtkDest>> pis;
   ntk.foreach_pi( [&]( auto n ) {
+    if ( remove_dangling_PIs && ntk.fanout_size( n ) == 0 ) {
+      old_to_new[n] = dest.get_constant( false );
+      return;
+    }
     if constexpr ( has_has_name_v<NtkSrc> && has_get_name_v<NtkSrc> && has_has_name_v<NtkDest> && has_get_name_v<NtkDest> )
     {
       auto s = ntk.make_signal( n );
@@ -295,12 +301,12 @@ NtkDest cleanup_dangling( NtkSrc const& ntk )
   ntk.foreach_register( [&]( std::pair<typename NtkSrc::signal, typename NtkSrc::node> reg ) {
     typename NtkSrc::node ro = reg.second;
     if constexpr ( has_has_name_v<NtkSrc> && has_get_name_v<NtkSrc> && has_has_name_v<NtkDest> && has_get_name_v<NtkDest> )
-    {
+  {
       auto ros = ntk.make_signal( ro );
       if ( ntk.has_name( ros ) )
       {
         old_to_new[ro] = dest.create_ro( ntk.get_name( ros ) );
-      }
+  }
       else
       {
         old_to_new[ro] = dest.create_ro();
@@ -439,6 +445,9 @@ NtkDest cleanup_dangling( NtkSrc const& ntk )
   } );
 
   ntk.foreach_po( [&]( auto po, auto index ) {
+    if ( remove_redundant_POs && ( dest.is_pi( dest.get_node( po ) ) || dest.is_constant( dest.get_node( po ) ) ) ) {
+      return;
+    }
     const auto f = old_to_new[po];
     typename NtkDest::signal g = ntk.is_complemented( po ) ? dest.create_not( old_to_new[po] ) : old_to_new[po];
 
@@ -912,7 +921,7 @@ Ntk cleanup_luts( Ntk const& ntk )
     {
       dest.create_po( s );
     }
-  } );
+  });
 
   return dest;
 }
