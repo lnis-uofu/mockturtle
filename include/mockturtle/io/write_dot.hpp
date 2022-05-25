@@ -319,7 +319,7 @@ public:
  *
  * **Required network functions:**
  * - is_constant
- * - is_pi
+ * - is_ci
  * - foreach_node
  * - foreach_fanin
  * - foreach_po
@@ -332,7 +332,7 @@ void write_dot( Ntk const& ntk, std::ostream& os, Drawer const& drawer = {} )
 {
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
   static_assert( has_is_constant_v<Ntk>, "Ntk does not implement the is_constant method" );
-  static_assert( has_is_pi_v<Ntk>, "Ntk does not implement the is_pi method" );
+  static_assert( has_is_ci_v<Ntk>, "Ntk does not implement the is_ci method" );
   static_assert( has_foreach_node_v<Ntk>, "Ntk does not implement the foreach_node method" );
   static_assert( has_foreach_fanin_v<Ntk>, "Ntk does not implement the foreach_fanin method" );
   static_assert( has_foreach_po_v<Ntk>, "Ntk does not implement the foreach_po method" );
@@ -347,7 +347,7 @@ void write_dot( Ntk const& ntk, std::ostream& os, Drawer const& drawer = {} )
                           drawer.node_label( ntk, n ),
                           drawer.node_shape( ntk, n ),
                           drawer.node_fillcolor( ntk, n ) );
-    if ( !ntk.is_constant( n ) && !ntk.is_pi( n ) )
+    if ( !ntk.is_constant( n ) && !ntk.is_ci( n ) )
     {
       ntk.foreach_fanin( n, [&]( auto const& f ) {
         if ( !drawer.draw_signal( ntk, n, f ) )
@@ -395,7 +395,7 @@ void write_dot( Ntk const& ntk, std::ostream& os, Drawer const& drawer = {} )
  *
  * **Required network functions:**
  * - is_constant
- * - is_pi
+ * - is_ci
  * - foreach_node
  * - foreach_fanin
  * - foreach_po
