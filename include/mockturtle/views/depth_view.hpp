@@ -298,7 +298,7 @@ private:
   void set_critical_path( node const& n )
   {
     _crit_path[n] = true;
-    if ( !this->is_constant( n ) && !( _ps.pi_cost && this->is_pi( n ) ) )
+    if ( !this->is_constant( n ) && !( _ps.pi_cost && this->is_ci( n ) ) )
     {
       const auto lvl = _levels[n];
       this->foreach_fanin( n, [&]( auto const& f ) {

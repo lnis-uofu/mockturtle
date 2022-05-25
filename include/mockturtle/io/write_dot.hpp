@@ -81,7 +81,7 @@ public: /* callbacks */
     {
       return "box";
     }
-    else if ( ntk.is_pi( n ) )
+    else if ( ntk.is_ci( n ) )
     {
       return "triangle";
     }
