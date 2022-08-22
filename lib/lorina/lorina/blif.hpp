@@ -438,6 +438,16 @@ static std::regex end( R"(.end)" );
         return true;
       }
 
+      /* skip timing related information */
+      if ( detail::starts_with( line, ".and_gate_delay" ) ||
+           detail::starts_with( line, ".input_arrival" ) ||
+           detail::starts_with( line, ".output_required" ) ||
+           detail::starts_with( line, ".default_output_required" ) ||
+           detail::starts_with( line, ".default_input_arrival" ))
+      {
+          return true;
+      }
+
       /* .end */
       if ( std::regex_search( line, m, blif_regex::end ) )
       {
